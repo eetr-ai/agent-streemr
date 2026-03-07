@@ -156,6 +156,19 @@ export type CreateAgentSocketListenerOptions<TContext> = {
   }) => string;
 
   /**
+   * Called whenever a client emits `set_context` for a given thread.
+   * Receives the existing per-thread context object (already created if absent)
+   * and the raw JSON sent by the client, allowing the application to merge or
+   * replace fields on the context in-place.
+   *
+   * @param context - The mutable per-thread context for `threadId`.
+   * @param data    - The `data` field from the `SetContextPayload`.
+   * @param threadId - The thread identifier.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onContextUpdate?: (context: TContext, data: Record<string, any>, threadId: string) => void;
+
+  /**
    * Called when an unhandled error occurs during an agent run or event handling.
    * The default emits `error` to the socket.
    */
@@ -228,6 +241,7 @@ export function createAgentSocketListener<TContext>(
     getAgentRunner,
     localToolRegistry,
     buildFollowUpMessage = defaultBuildFollowUpMessage,
+    onContextUpdate,
     onError,
     localToolTtlMs = 30_000,
   } = options;
@@ -438,6 +452,24 @@ export function createAgentSocketListener<TContext>(
         topicName,
         currentTopicName: topicName,
       });
+    });
+
+    // -----------------------------------------------------------------------
+    // set_context
+    // -----------------------------------------------------------------------
+    socket.on("set_context", (payload: { data?: Record<string, unknown> }) => {
+      if (!threadId) {
+        socket.emit("error", { message: "Missing threadId" });
+        return;
+      }
+      if (!payload || typeof payload.data !== "object" || payload.data === null) {
+        socket.emit("error", { message: "set_context: payload.data must be a non-null object" });
+        return;
+      }
+      if (onContextUpdate) {
+        const ctx = getOrCreateContext(threadId);
+        onContextUpdate(ctx, payload.data, threadId);
+      }
     });
 
     // -----------------------------------------------------------------------

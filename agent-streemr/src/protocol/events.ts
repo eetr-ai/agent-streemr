@@ -58,6 +58,19 @@ export type LocalToolResponsePayload<TResponse = object> = {
  */
 export type ClearContextPayload = Record<string, never>;
 
+/**
+ * Sent by the client to provide or update structured context for the agent.
+ * The server will invoke `onContextUpdate` with the deserialized JSON object,
+ * giving the application an opportunity to mutate its per-thread context.
+ *
+ * Event name: `set_context`
+ */
+export type SetContextPayload = {
+  /** Arbitrary JSON the client wants to surface to the agent. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: Record<string, any>;
+};
+
 // ---------------------------------------------------------------------------
 // Server → Client events
 // ---------------------------------------------------------------------------
@@ -137,6 +150,7 @@ export interface ClientToServerEvents {
   message: (payload: MessagePayload) => void;
   local_tool_response: (payload: LocalToolResponsePayload) => void;
   clear_context: () => void;
+  set_context: (payload: SetContextPayload) => void;
 }
 
 /**

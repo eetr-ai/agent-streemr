@@ -77,6 +77,12 @@ httpServer.listen(3000);
 |---|---|
 | `local_tool:response` | `LocalToolResponsePayload` |
 
+## Context update (client → server)
+
+| Event | Payload | Description |
+|---|---|---|
+| `set_context` | `SetContextPayload` | Push a JSON object to the agent's per-thread context before the next run |
+
 Response statuses: `"success"` · `"denied"` · `"not_supported"` · `"error"`
 
 ## Local tool modes
@@ -97,6 +103,20 @@ Creates a Socket.io `connection` handler. Options:
 |---|---|---|
 | `authenticate` | `(socket) => Promise<AuthResult<TContext>>` | Verify the connecting client; return `{ success: false }` to reject |
 | `runner` | `AgentRunner<TContext>` | Called for each incoming `agent:message` event |
+| `onContextUpdate?` | `(context: TContext, data: Record<string, any>, threadId: string) => void` | Called when a client emits `set_context`; mutate `context` in-place to surface data to the agent |
+
+`onContextUpdate` example:
+
+```ts
+createAgentSocketListener({
+  // …
+  createContext: (_threadId) => ({ userId: "unknown", prefs: {} }),
+  onContextUpdate(context, data, _threadId) {
+    // Merge the client-supplied fields into the mutable per-thread context.
+    Object.assign(context, data);
+  },
+});
+```
 
 ### `createLocalTool(options)`
 

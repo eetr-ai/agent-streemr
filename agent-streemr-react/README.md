@@ -85,6 +85,39 @@ has a `streaming: boolean` flag you can use to show a cursor or typing indicator
 ))}
 ```
 
+### Providing context to the agent
+
+Call `setContext(data)` at any time to push a plain JSON object to the server.
+The server invokes its `onContextUpdate` callback with the data, letting the
+application merge or replace fields on its per-thread context before the next
+agent run. Common uses include the current view state, loaded resources, or
+user preferences that the agent should be aware of.
+
+```tsx
+const { connect, sendMessage, setContext } = useAgentStream({ url, token });
+
+// After loading a record, push it into the agent's context
+useEffect(() => {
+  if (recipe) {
+    setContext({ currentRecipe: recipe });
+  }
+}, [recipe]);
+```
+
+The server side must declare an `onContextUpdate` handler to act on this data:
+
+```ts
+createAgentSocketListener({
+  createContext: () => ({ currentRecipe: null }),
+  onContextUpdate(context, data) {
+    Object.assign(context, data);
+  },
+  // …
+});
+```
+
+---
+
 ### Reasoning / internal tokens
 
 Reasoning tokens (agent "thinking" output) arrive as `internal_token` events
@@ -398,6 +431,7 @@ function ChatApp({ deviceId }: { deviceId: string }) {
 | `disconnect` | `() => void` | Disconnect and reset all state |
 | `sendMessage` | `(text: string, topicName?: string) => void` | Optimistic send |
 | `clearContext` | `() => void` | Emit `clear_context`; wipes local messages on confirmation |
+| `setContext` | `(data: Record<string, any>) => void` | Emit `set_context`; server calls `onContextUpdate` with the data |
 | `messages` | `AgentMessage[]` | Conversation history |
 | `status` | `ConnectionStatus` | `"disconnected" \| "connecting" \| "connected" \| "error"` |
 | `internalThought` | `string` | Accumulated reasoning tokens for the current turn |

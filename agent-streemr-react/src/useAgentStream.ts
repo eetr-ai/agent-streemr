@@ -197,11 +197,19 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     socket.emit("clear_context");
   }, []);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const setContext = useCallback((data: Record<string, any>) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    socket.emit("set_context", { data });
+  }, []);
+
   return {
     connect,
     disconnect,
     sendMessage,
     clearContext,
+    setContext,
     messages,
     status,
     internalThought,

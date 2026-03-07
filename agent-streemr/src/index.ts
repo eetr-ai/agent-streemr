@@ -25,6 +25,7 @@ export type {
   MessagePayload,
   LocalToolResponsePayload,
   ClearContextPayload,
+  SetContextPayload,
   InternalTokenPayload,
   LocalToolPayload,
   AgentResponsePayload,

@@ -19,6 +19,7 @@ export type {
   InternalTokenPayload,
   ContextClearedPayload,
   ErrorPayload,
+  SetContextPayload,
   ClientToServerEvents,
   ServerToClientEvents,
 } from "@eetr/agent-streemr";
@@ -90,6 +91,13 @@ export type UseAgentStreamResult = {
   sendMessage: (text: string, topicName?: string) => void;
   /** Emit `clear_context`; on `context_cleared` confirmation messages are wiped locally too. */
   clearContext: () => void;
+  /**
+   * Emit `set_context` with an arbitrary JSON object.
+   * The server will invoke `onContextUpdate` with the data, allowing the
+   * application to update its per-thread context before the next agent run.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setContext: (data: Record<string, any>) => void;
   /** Local conversation history (user + assistant turns). */
   messages: AgentMessage[];
   /** Current socket connection status. */
