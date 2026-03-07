@@ -101,7 +101,6 @@ export type EmitLocalToolFn = (payload: {
  *
  * The options object provides everything the agent needs:
  * - `threadId` — for history keying and room broadcasting.
- * - `topicName` / `currentTopicName` — for dynamic system prompt injection.
  * - `context` — the current per-thread context (application-defined `TContext`).
  * - `emitLocalTool` — unified emitter; pass `toolType: "tracked"` for async/sync tools
  *   or `toolType: "fire_and_forget"` for untracked tools. Returns `request_id | null`.
@@ -112,8 +111,6 @@ export type AgentRunner<TContext> = (
   message: string,
   options: {
     threadId: string;
-    topicName?: string;
-    currentTopicName?: string;
     context?: TContext;
     emitLocalTool: EmitLocalToolFn;
     localToolRegistry: LocalToolRegistry<TContext>;
@@ -267,8 +264,6 @@ export function createAgentSocketListener<TContext>(
   const queue = new ThreadQueue();
   /** Per-thread mutable context objects. Processors mutate these in-place. */
   const contextStore = new Map<string, TContext>();
-  /** Last emitted topic name per thread, for follow-up turns. */
-  const lastTopicByThread = new Map<string, string>();
   /** Fire-and-forget request IDs emitted per thread (used to classify stray responses). */
   const fireAndForgetByThread = new Map<string, Map<string, number>>();
 
@@ -340,8 +335,7 @@ export function createAgentSocketListener<TContext>(
   function enqueueRun(
     socket: Socket,
     threadId: string,
-    message: string,
-    opts: { topicName?: string; currentTopicName?: string }
+    message: string
   ): void {
     // Emit working=true the first time the queue becomes active for this thread.
     const isFirst = !queue.has(threadId);
@@ -352,8 +346,6 @@ export function createAgentSocketListener<TContext>(
       const runner = getAgentRunner(threadId);
       const stream = runner(message, {
         threadId,
-        topicName: opts.topicName,
-        currentTopicName: opts.currentTopicName,
         context,
         emitLocalTool: makeEmitLocalTool(socket, threadId),
         localToolRegistry,
@@ -431,17 +423,13 @@ export function createAgentSocketListener<TContext>(
     // -----------------------------------------------------------------------
     // message
     // -----------------------------------------------------------------------
-    socket.on("message", (payload: { text?: string; topic_name?: string; context?: Record<string, unknown> }) => {
+    socket.on("message", (payload: { text?: string; context?: Record<string, unknown> }) => {
       if (!threadId) {
         socket.emit("error", { message: "Missing threadId" });
         return;
       }
       const text = typeof payload?.text === "string" ? payload.text.trim() : "";
       if (!text) return;
-
-      const currentTopicName =
-        typeof payload?.topic_name === "string" ? payload.topic_name.trim() || undefined : undefined;
-      const topicName = currentTopicName ?? (text.slice(0, 80).trim() || "Chat");
 
       // Ensure context exists before the run; apply inline context if provided.
       const ctx = getOrCreateContext(threadId);
@@ -454,7 +442,7 @@ export function createAgentSocketListener<TContext>(
         onContextUpdate(ctx, payload.context, threadId);
       }
 
-      enqueueRun(socket, threadId, text, { topicName, currentTopicName });
+      enqueueRun(socket, threadId, text);
     });
 
     // -----------------------------------------------------------------------
@@ -514,7 +502,6 @@ export function createAgentSocketListener<TContext>(
         return;
       }
 
-      const topicName = lastTopicByThread.get(threadId);
       const followUp = buildFollowUpMessage({
         toolName,
         requestId,
@@ -524,10 +511,7 @@ export function createAgentSocketListener<TContext>(
         isLast: remainingCount === 0,
       });
 
-      enqueueRun(socket, threadId, followUp, {
-        topicName,
-        currentTopicName: topicName,
-      });
+      enqueueRun(socket, threadId, followUp);
     });
 
     // -----------------------------------------------------------------------
@@ -560,7 +544,6 @@ export function createAgentSocketListener<TContext>(
       // Let any active run finish, then clear
       queue.enqueue(threadId, async () => {
         contextStore.delete(threadId);
-        lastTopicByThread.delete(threadId);
         fireAndForgetByThread.delete(threadId);
         localToolRegistry.clearThread(threadId);
         queue.clear(threadId);

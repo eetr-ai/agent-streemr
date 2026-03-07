@@ -199,7 +199,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     setStatus("disconnected");
   }, [detachSocket]);
 
-  const sendMessage = useCallback((text: string, topicName?: string) => {
+  const sendMessage = useCallback((text: string) => {
     const socket = socketRef.current;
     if (!socket?.connected) return;
 
@@ -215,7 +215,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     setInternalThought("");
     setIsStreaming(true);
 
-    socket.emit("message", topicName ? { text, topic_name: topicName } : { text });
+    socket.emit("message", { text });
   }, []);
 
   const clearContext = useCallback(() => {

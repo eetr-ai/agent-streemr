@@ -196,17 +196,6 @@ describe("useAgentStream", () => {
     expect(mockSocket.emit).toHaveBeenCalledWith("message", { text: "Hello agent" });
   });
 
-  it("sendMessage() includes topic_name when provided", () => {
-    const { result } = renderStream();
-    act(() => { result.current.connect("thread-1"); });
-    act(() => { mockSocket._trigger("connect"); });
-    act(() => { result.current.sendMessage("Hi", "My Chat Topic"); });
-    expect(mockSocket.emit).toHaveBeenCalledWith("message", {
-      text: "Hi",
-      topic_name: "My Chat Topic",
-    });
-  });
-
   it("sendMessage() clears internalThought", () => {
     const { result } = renderStream();
     act(() => { result.current.connect("thread-1"); });

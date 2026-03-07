@@ -94,7 +94,7 @@ export type UseAgentStreamResult = {
    * Optimistically push a user message and emit `message` to the server.
    * Also clears the current `internalThought`.
    */
-  sendMessage: (text: string, topicName?: string) => void;
+  sendMessage: (text: string) => void;
   /** Emit `clear_context`; on `context_cleared` confirmation messages are wiped locally too. */
   clearContext: () => void;
   /**

@@ -32,7 +32,6 @@ import type { AgentStreamEvent } from "../protocol/stream";
  *
  * | `AgentStreamEvent.type` | Socket.io event emitted |
  * |-------------------------|-------------------------|
- * | `topic_name`            | `topic_name`            |
  * | `internal_token`        | `internal_token`        |
  * | `agent_response`        | `agent_response`        |
  * | `response_reference`    | `response_reference`    |
@@ -68,9 +67,6 @@ export class AgentStreamAdapter {
   async run(stream: AsyncIterable<AgentStreamEvent>): Promise<void> {
     for await (const event of stream) {
       switch (event.type) {
-        case "topic_name":
-          this._socket.emit("topic_name", { name: event.name });
-          break;
         case "internal_token":
           this._socket.emit("internal_token", { token: event.token });
           break;

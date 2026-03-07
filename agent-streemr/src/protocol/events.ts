@@ -43,11 +43,6 @@ export type MessagePayload = {
   /** The user's message text. */
   text: string;
   /**
-   * Optional topic name for the conversation.
-   * When absent the server derives a topic from the first 80 chars of `text`.
-   */
-  topic_name?: string;
-  /**
    * Optional inline context sent alongside the message.
    * This is the preferred alternative to a prior standalone `set_context` call.
    * When present the server applies it (via `onContextUpdate`) before running the agent.

@@ -12,16 +12,6 @@
  */
 
 /**
- * Emitted once at the start of a turn to set (or update) the conversation
- * topic name visible to the client (e.g. as a thread title).
- */
-export type TopicNameEvent = {
-  type: "topic_name";
-  /** Human-readable topic name for the conversation thread. */
-  name: string;
-};
-
-/**
  * One token of the agent's reasoning stream.
  * Should be displayed in a "thinking" or "reasoning" panel — not as part
  * of the final reply shown to the user.
@@ -74,13 +64,11 @@ export type ResponseReferenceEvent = {
  *
  * | Event type           | Socket.io event emitted   |
  * |----------------------|---------------------------|
- * | `topic_name`         | `topic_name`              |
  * | `internal_token`     | `internal_token`          |
  * | `agent_response`     | `agent_response`          |
  * | `response_reference` | `response_reference`      |
  */
 export type AgentStreamEvent =
-  | TopicNameEvent
   | InternalTokenEvent
   | AgentResponseEvent
   | ResponseReferenceEvent;
