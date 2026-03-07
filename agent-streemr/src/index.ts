@@ -95,9 +95,11 @@ export { createAgentSocketListener } from "./server/listener";
 export type {
   LocalToolMode,
   CreateLocalToolOptions,
+  LangChainConfigOptions,
 } from "./langchain/localTool";
 export {
   createLocalTool,
   EMIT_LOCAL_TOOL_KEY,
   SYNC_REGISTRY_KEY,
+  buildLangChainConfig,
 } from "./langchain/localTool";

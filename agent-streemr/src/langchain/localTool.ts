@@ -4,34 +4,61 @@
 /**
  * @module langchain/localTool
  *
- * `createLocalTool` — factory that produces a LangChain `DynamicStructuredTool`
- * wired for the agent-streemr local-tool protocol, eliminating the per-tool
- * `config.configurable` boilerplate found in the reference implementation.
+ * Exports two closely-related utilities for LangChain / LangGraph integration:
+ *
+ * - **`createLocalTool`** — factory that produces a `DynamicStructuredTool`
+ *   wired for the agent-streemr local-tool protocol.
+ * - **`buildLangChainConfig`** — builds the `configurable` object required by
+ *   `agent.stream(...)` from the standard `AgentRunner` options, eliminating
+ *   the need to reference `EMIT_LOCAL_TOOL_KEY` / `SYNC_REGISTRY_KEY` manually.
  *
  * Dependency tier: `@langchain/core` (peer) + `protocol/` (types only).
  *
- * ### Keys injected via `config.configurable`
+ * ---
  *
- * The listener and your agent setup must inject these keys into
- * `config.configurable` before calling `agent.stream(...)`:
+ * ### Wiring `config.configurable` in an `AgentRunner`
  *
- * | Key constant                       | Type                         | Required for        |
- * |------------------------------------|------------------------------|---------------------|
- * | `EMIT_LOCAL_TOOL_KEY`              | `EmitLocalToolFn`            | all modes           |
- * | `SYNC_REGISTRY_KEY`                | `SyncAwaitable`              | `sync`              |
- *
- * In `createAgentSocketListener`, these are injected automatically.
- * When building a custom runner, inject them yourself:
+ * Use `buildLangChainConfig` to build the configurable from the runner `options`
+ * object — it sets `thread_id`, `EMIT_LOCAL_TOOL_KEY`, and `SYNC_REGISTRY_KEY`
+ * automatically:
  *
  * ```ts
- * const config = {
- *   configurable: {
- *     thread_id: threadId,
- *     [EMIT_LOCAL_TOOL_KEY]: emitLocalTool,
- *     [SYNC_REGISTRY_KEY]: localToolRegistry,
- *   },
+ * export const streamAgentResponse: AgentRunner<object> = async function* (
+ *   message,
+ *   options,
+ * ) {
+ *   const tokenStream = await agent.stream(
+ *     { messages: [{ role: "user", content: message }] },
+ *     {
+ *       streamMode: "messages",
+ *       configurable: buildLangChainConfig(options),
+ *     },
+ *   );
+ *   // ...
  * };
  * ```
+ *
+ * If you need to pass extra configurable keys alongside the agent-streemr ones,
+ * spread the result:
+ *
+ * ```ts
+ * configurable: {
+ *   ...buildLangChainConfig(options),
+ *   my_custom_key: someValue,
+ * }
+ * ```
+ *
+ * #### Configurable keys (reference)
+ *
+ * `buildLangChainConfig` handles these internally. They are exported as
+ * constants for advanced / custom use cases only.
+ *
+ * | Key constant          | Type              | Required for |
+ * |-----------------------|-------------------|--------------|
+ * | `EMIT_LOCAL_TOOL_KEY` | `EmitLocalToolFn` | all modes    |
+ * | `SYNC_REGISTRY_KEY`   | `SyncAwaitable`   | `sync`       |
+ *
+ * ---
  *
  * @example Async tool (default)
  * ```ts
@@ -118,6 +145,55 @@ type EmitLocalToolFn = (payload: {
   args_json: object;
   toolType: "tracked" | "fire_and_forget";
 }) => string | null;
+
+// ---------------------------------------------------------------------------
+// buildLangChainConfig — convenience helper for AgentRunner implementations
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal shape of the AgentRunner options object that `buildLangChainConfig` needs.
+ * Structurally compatible with the full `AgentRunner` options so callers can
+ * pass the options object directly without any narrowing.
+ */
+export type LangChainConfigOptions = {
+  threadId: string;
+  emitLocalTool: EmitLocalToolFn;
+  localToolRegistry: SyncAwaitable;
+  [key: string]: unknown;
+};
+
+/**
+ * Build the `configurable` object expected by LangChain / LangGraph when using
+ * agent-streemr local tools. Pass the result directly to `config.configurable`
+ * inside an `AgentRunner`.
+ *
+ * Eliminates the need to manually reference `EMIT_LOCAL_TOOL_KEY` and
+ * `SYNC_REGISTRY_KEY` in every agent runner implementation.
+ *
+ * @example
+ * ```ts
+ * export const streamAgentResponse: AgentRunner<object> = async function* (
+ *   message,
+ *   options,
+ * ) {
+ *   const tokenStream = await agent.stream(
+ *     { messages: [{ role: "user", content: message }] },
+ *     {
+ *       streamMode: "messages",
+ *       configurable: buildLangChainConfig(options),
+ *     },
+ *   );
+ *   // ...
+ * };
+ * ```
+ */
+export function buildLangChainConfig(options: LangChainConfigOptions): Record<string, unknown> {
+  return {
+    thread_id: options.threadId,
+    [EMIT_LOCAL_TOOL_KEY]: options.emitLocalTool,
+    [SYNC_REGISTRY_KEY]: options.localToolRegistry,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Tool factory
