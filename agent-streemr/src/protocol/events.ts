@@ -11,6 +11,26 @@
  */
 
 // ---------------------------------------------------------------------------
+// Protocol versioning
+// ---------------------------------------------------------------------------
+
+/**
+ * Represents a semantic protocol version with a major and minor component.
+ *
+ * Compatibility rule (as evaluated by the server):
+ * - `welcome` is emitted when `client.major === server.major && client.minor <= server.minor`.
+ * - Any other combination results in `version_not_supported` followed by disconnection.
+ *
+ * Minor version bumps are backward-compatible; clients are expected to lag behind servers.
+ */
+export type ProtocolVersion = {
+  /** Breaking-change counter. Clients and servers must agree on this. */
+  major: number;
+  /** Non-breaking feature counter. Clients may be behind the server's minor version. */
+  minor: number;
+};
+
+// ---------------------------------------------------------------------------
 // Client → Server events
 // ---------------------------------------------------------------------------
 
@@ -27,6 +47,13 @@ export type MessagePayload = {
    * When absent the server derives a topic from the first 80 chars of `text`.
    */
   topic_name?: string;
+  /**
+   * Optional inline context sent alongside the message.
+   * This is the preferred alternative to a prior standalone `set_context` call.
+   * When present the server applies it (via `onContextUpdate`) before running the agent.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context?: Record<string, any>;
 };
 
 /**
@@ -69,6 +96,18 @@ export type SetContextPayload = {
   /** Arbitrary JSON the client wants to surface to the agent. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: Record<string, any>;
+};
+
+/**
+ * Sent by the client immediately after the socket connects to initiate the
+ * protocol version handshake. The server replies with `welcome` (accepted) or
+ * `version_not_supported` (rejected) and then disconnects.
+ *
+ * Event name: `client_hello`
+ */
+export type ClientHelloPayload = {
+  /** The protocol version the client is implementing. */
+  version: ProtocolVersion;
 };
 
 // ---------------------------------------------------------------------------
@@ -133,6 +172,46 @@ export type ErrorPayload = {
   message: string;
 };
 
+/**
+ * Emitted by the server in response to a `client_hello` when the client's
+ * protocol version is compatible with the server's.
+ *
+ * Event name: `welcome`
+ */
+export type WelcomePayload = {
+  /** The protocol version the server is running. */
+  server_version: ProtocolVersion;
+};
+
+/**
+ * Emitted by the server when the client's protocol version is incompatible.
+ * The server will disconnect the socket immediately after emitting this event.
+ *
+ * Incompatibility is defined as: `client.major !== server.major || client.minor > server.minor`.
+ *
+ * Event name: `version_not_supported`
+ */
+export type VersionNotSupportedPayload = {
+  /** The version the server supports. */
+  server_version: ProtocolVersion;
+  /** The version the client reported. */
+  client_version: ProtocolVersion;
+};
+
+/**
+ * Emitted by the server whenever the processing state of the thread's run
+ * queue changes. `working: true` is sent when the queue transitions from idle
+ * to active; `working: false` when it fully drains back to idle.
+ *
+ * Use this to show/hide a global "thinking" indicator in the UI.
+ *
+ * Event name: `agent_working`
+ */
+export type AgentWorkingPayload = {
+  /** `true` while the server is processing at least one task for this thread. */
+  working: boolean;
+};
+
 // ---------------------------------------------------------------------------
 // Convenience maps (for typed socket.io usage)
 // ---------------------------------------------------------------------------
@@ -147,6 +226,11 @@ export type ErrorPayload = {
  * ```
  */
 export interface ClientToServerEvents {
+  /**
+   * Initiates the protocol version handshake.
+   * Must be the first event the client emits after the socket connects.
+   */
+  client_hello: (payload: ClientHelloPayload) => void;
   message: (payload: MessagePayload) => void;
   local_tool_response: (payload: LocalToolResponsePayload) => void;
   clear_context: () => void;
@@ -163,6 +247,12 @@ export interface ClientToServerEvents {
  * ```
  */
 export interface ServerToClientEvents {
+  /** Response to a successful `client_hello` — protocol versions are compatible. */
+  welcome: (payload: WelcomePayload) => void;
+  /** Response to an incompatible `client_hello` — server will disconnect immediately after. */
+  version_not_supported: (payload: VersionNotSupportedPayload) => void;
+  /** Signals that the thread's run queue became active (`working: true`) or fully drained (`working: false`). */
+  agent_working: (payload: AgentWorkingPayload) => void;
   internal_token: (payload: InternalTokenPayload) => void;
   local_tool: (payload: LocalToolPayload) => void;
   agent_response: (payload: AgentResponsePayload) => void;

@@ -22,15 +22,20 @@
 // protocol/events — socket payload types (no runtime deps)
 // ---------------------------------------------------------------------------
 export type {
+  ProtocolVersion,
   MessagePayload,
   LocalToolResponsePayload,
   ClearContextPayload,
   SetContextPayload,
+  ClientHelloPayload,
   InternalTokenPayload,
   LocalToolPayload,
   AgentResponsePayload,
   ContextClearedPayload,
   ErrorPayload,
+  WelcomePayload,
+  VersionNotSupportedPayload,
+  AgentWorkingPayload,
   ClientToServerEvents,
   ServerToClientEvents,
 } from "./protocol/events";
@@ -88,7 +93,7 @@ export type {
   AgentRunner,
   CreateAgentSocketListenerOptions,
 } from "./server/listener";
-export { createAgentSocketListener } from "./server/listener";
+export { createAgentSocketListener, PROTOCOL_VERSION } from "./server/listener";
 
 // ---------------------------------------------------------------------------
 // langchain/localTool — createLocalTool factory + configurable key constants

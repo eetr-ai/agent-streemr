@@ -13,6 +13,7 @@ import { useCallback, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
+  ProtocolVersion,
   ServerToClientEvents,
 } from "@eetr/agent-streemr";
 import type {
@@ -31,6 +32,9 @@ function randomId(): string {
 }
 
 type AgentSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+/** The protocol version this client build implements. */
+const CLIENT_PROTOCOL_VERSION: ProtocolVersion = { major: 1, minor: 0 };
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -61,6 +65,8 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
   const [internalThought, setInternalThought] = useState<string>("");
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isWorking, setIsWorking] = useState<boolean>(false);
+  const [serverVersion, setServerVersion] = useState<ProtocolVersion | undefined>(undefined);
 
   // ---------------------------------------------------------------------------
   // Attach all server-event listeners to a freshly created socket.
@@ -69,11 +75,28 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     socket.on("connect", () => {
       setStatus("connected");
       setError(null);
+      socket.emit("client_hello", { version: CLIENT_PROTOCOL_VERSION });
     });
 
     socket.on("disconnect", () => {
       setStatus("disconnected");
       setIsStreaming(false);
+      setIsWorking(false);
+    });
+
+    socket.on("welcome", ({ server_version }) => {
+      setServerVersion(server_version);
+    });
+
+    socket.on("version_not_supported", ({ server_version, client_version }) => {
+      setStatus("error");
+      setError(
+        `Protocol version not supported: client=${client_version.major}.${client_version.minor}, server=${server_version.major}.${server_version.minor}`
+      );
+    });
+
+    socket.on("agent_working", ({ working }) => {
+      setIsWorking(working);
     });
 
     socket.on("connect_error", (err) => {
@@ -170,6 +193,8 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     setMessages([]);
     setInternalThought("");
     setIsStreaming(false);
+    setIsWorking(false);
+    setServerVersion(undefined);
     setError(null);
     setStatus("disconnected");
   }, [detachSocket]);
@@ -216,6 +241,8 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     status,
     internalThought,
     isStreaming,
+    isWorking,
+    serverVersion,
     error,
     socket: socketRef.current,
   };

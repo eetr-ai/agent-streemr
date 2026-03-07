@@ -37,10 +37,21 @@
 import { randomUUID } from "node:crypto";
 import type { Server, Socket } from "socket.io";
 import type { AgentStreamEvent } from "../protocol/stream";
+import type { ProtocolVersion } from "../protocol/events";
 import { parseLocalToolResponseEnvelope } from "../protocol/localTool";
 import { AgentStreamAdapter } from "./adapter";
 import { ThreadQueue } from "./queue";
 import type { LocalToolRegistry } from "./registry";
+
+// ---------------------------------------------------------------------------
+// Protocol version
+// ---------------------------------------------------------------------------
+
+/**
+ * The protocol version implemented by this build of the server.
+ * Exported so consumer code can surface it in health endpoints or logs.
+ */
+export const PROTOCOL_VERSION: ProtocolVersion = { major: 1, minor: 0 };
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -318,6 +329,10 @@ export function createAgentSocketListener<TContext>(
     message: string,
     opts: { topicName?: string; currentTopicName?: string }
   ): void {
+    // Emit working=true the first time the queue becomes active for this thread.
+    const isFirst = !queue.has(threadId);
+    if (isFirst) socket.emit("agent_working", { working: true });
+
     queue.enqueue(threadId, async () => {
       const context = contextStore.get(threadId);
       const runner = getAgentRunner(threadId);
@@ -336,6 +351,9 @@ export function createAgentSocketListener<TContext>(
       } catch (err) {
         handleError(err, socket, threadId);
       }
+    }).then(() => {
+      // Emit working=false only when the queue has fully drained for this thread.
+      if (!queue.has(threadId)) socket.emit("agent_working", { working: false });
     });
   }
 
@@ -364,9 +382,42 @@ export function createAgentSocketListener<TContext>(
     if (threadId) socket.join(threadId);
 
     // -----------------------------------------------------------------------
+    // client_hello — version handshake
+    // -----------------------------------------------------------------------
+    socket.on("client_hello", (payload: { version?: ProtocolVersion }) => {
+      const clientVersion = payload?.version;
+      if (
+        !clientVersion ||
+        typeof clientVersion.major !== "number" ||
+        typeof clientVersion.minor !== "number"
+      ) {
+        socket.emit("version_not_supported", {
+          server_version: PROTOCOL_VERSION,
+          client_version: { major: 0, minor: 0 },
+        });
+        socket.disconnect();
+        return;
+      }
+
+      const compatible =
+        clientVersion.major === PROTOCOL_VERSION.major &&
+        clientVersion.minor <= PROTOCOL_VERSION.minor;
+
+      if (compatible) {
+        socket.emit("welcome", { server_version: PROTOCOL_VERSION });
+      } else {
+        socket.emit("version_not_supported", {
+          server_version: PROTOCOL_VERSION,
+          client_version: clientVersion,
+        });
+        socket.disconnect();
+      }
+    });
+
+    // -----------------------------------------------------------------------
     // message
     // -----------------------------------------------------------------------
-    socket.on("message", (payload: { text?: string; topic_name?: string }) => {
+    socket.on("message", (payload: { text?: string; topic_name?: string; context?: Record<string, unknown> }) => {
       if (!threadId) {
         socket.emit("error", { message: "Missing threadId" });
         return;
@@ -378,8 +429,16 @@ export function createAgentSocketListener<TContext>(
         typeof payload?.topic_name === "string" ? payload.topic_name.trim() || undefined : undefined;
       const topicName = currentTopicName ?? (text.slice(0, 80).trim() || "Chat");
 
-      // Ensure context exists before the run
-      getOrCreateContext(threadId);
+      // Ensure context exists before the run; apply inline context if provided.
+      const ctx = getOrCreateContext(threadId);
+      if (
+        onContextUpdate &&
+        payload?.context !== null &&
+        payload?.context !== undefined &&
+        typeof payload.context === "object"
+      ) {
+        onContextUpdate(ctx, payload.context, threadId);
+      }
 
       enqueueRun(socket, threadId, text, { topicName, currentTopicName });
     });

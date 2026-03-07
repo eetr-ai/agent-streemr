@@ -12,6 +12,7 @@ import type { ManagerOptions, SocketOptions } from "socket.io-client";
 // Re-export protocol types consumers might need without a direct dependency
 // on the server-side @eetr/agent-streemr package.
 export type {
+  ProtocolVersion,
   MessagePayload,
   LocalToolPayload,
   LocalToolResponsePayload,
@@ -20,6 +21,10 @@ export type {
   ContextClearedPayload,
   ErrorPayload,
   SetContextPayload,
+  ClientHelloPayload,
+  WelcomePayload,
+  VersionNotSupportedPayload,
+  AgentWorkingPayload,
   ClientToServerEvents,
   ServerToClientEvents,
 } from "@eetr/agent-streemr";
@@ -111,6 +116,17 @@ export type UseAgentStreamResult = {
   isStreaming: boolean;
   /** Last server error message, if any. `null` when no error is present. */
   error: string | null;
+  /**
+   * `true` while the server's run queue for this thread is active.
+   * Transitions to `false` when the queue fully drains.
+   * Use this to show a global "thinking" indicator independent of streaming state.
+   */
+  isWorking: boolean;
+  /**
+   * The protocol version reported by the server in the `welcome` event.
+   * `undefined` before the handshake completes.
+   */
+  serverVersion?: import("@eetr/agent-streemr").ProtocolVersion;
   /**
    * The raw typed Socket.io socket instance, or `null` before `connect()` is called.
    * Pass this to `useLocalToolHandler` to compose tool handling.
