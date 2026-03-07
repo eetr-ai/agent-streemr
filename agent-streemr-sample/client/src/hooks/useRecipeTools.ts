@@ -165,18 +165,135 @@ export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: Use
 
   // recipe_set_ingredients ----------------------------------------------------
   useLocalToolHandler(socket, "recipe_set_ingredients", async (args) => {
-    const { id, ingredients } = args as { id: string; ingredients: string[] };
+    const { id, op = "set", ingredients, items, index, item, value } = args as {
+      id: string;
+      op?: "set" | "add" | "remove" | "update";
+      ingredients?: string[];
+      items?: string[];
+      index?: number;
+      item?: string;
+      value?: string;
+    };
+
     const existing = draftsRef.current.get(id) ?? {};
-    draftsRef.current.set(id, { ...existing, id, ingredients });
-    return { response_json: { ok: true, id, count: ingredients.length } };
+    const stored = await getRecipe(id);
+    const current: string[] = existing.ingredients ?? stored?.ingredients ?? [];
+
+    let next: string[];
+    switch (op) {
+      case "add": {
+        const toInsert = items ?? (item ? [item] : []);
+        if (index !== undefined) {
+          next = [...current.slice(0, index), ...toInsert, ...current.slice(index)];
+        } else {
+          next = [...current, ...toInsert];
+        }
+        break;
+      }
+      case "remove": {
+        if (index !== undefined) {
+          next = current.filter((_, i) => i !== index);
+        } else if (value !== undefined) {
+          next = current.filter((ing) => ing !== value);
+        } else {
+          return { response_json: { ok: false, error: "op='remove' requires index or value." } };
+        }
+        break;
+      }
+      case "update": {
+        if (index === undefined || item === undefined) {
+          return { response_json: { ok: false, error: "op='update' requires index and item." } };
+        }
+        next = current.map((ing, i) => (i === index ? item : ing));
+        break;
+      }
+      case "set":
+      default: {
+        if (!ingredients) {
+          return { response_json: { ok: false, error: "op='set' requires ingredients array." } };
+        }
+        next = ingredients;
+        break;
+      }
+    }
+
+    draftsRef.current.set(id, { ...existing, id, ingredients: next });
+    return { response_json: { ok: true, id, count: next.length } };
   }, { allowList });
 
   // recipe_set_directions -----------------------------------------------------
   useLocalToolHandler(socket, "recipe_set_directions", async (args) => {
-    const { id, instructions } = args as { id: string; instructions: string };
+    const { id, op = "set", instructions, step, index } = args as {
+      id: string;
+      op?: "set" | "add" | "remove" | "update";
+      instructions?: string;
+      step?: string;
+      index?: number;
+    };
+
     const existing = draftsRef.current.get(id) ?? {};
-    draftsRef.current.set(id, { ...existing, id, instructions });
-    return { response_json: { ok: true, id } };
+    const stored = await getRecipe(id);
+    const currentMd: string = existing.instructions ?? stored?.instructions ?? "";
+
+    /** Parse a markdown numbered list into plain step strings. */
+    function parseSteps(md: string): string[] {
+      return md
+        .split("\n")
+        .map((l) => l.replace(/^\d+\.\s+/, "").trim())
+        .filter(Boolean);
+    }
+
+    /** Render plain step strings back to a numbered markdown list. */
+    function stepsToMd(steps: string[]): string {
+      return steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+    }
+
+    let nextMd: string;
+    switch (op) {
+      case "add": {
+        if (!step) {
+          return { response_json: { ok: false, error: "op='add' requires step." } };
+        }
+        const steps = parseSteps(currentMd);
+        if (index !== undefined) {
+          // index is 1-based; insert before that step
+          steps.splice(index - 1, 0, step);
+        } else {
+          steps.push(step);
+        }
+        nextMd = stepsToMd(steps);
+        break;
+      }
+      case "remove": {
+        if (index === undefined) {
+          return { response_json: { ok: false, error: "op='remove' requires index (1-based step number)." } };
+        }
+        const steps = parseSteps(currentMd);
+        steps.splice(index - 1, 1);
+        nextMd = stepsToMd(steps);
+        break;
+      }
+      case "update": {
+        if (index === undefined || !step) {
+          return { response_json: { ok: false, error: "op='update' requires index and step." } };
+        }
+        const steps = parseSteps(currentMd);
+        steps[index - 1] = step;
+        nextMd = stepsToMd(steps);
+        break;
+      }
+      case "set":
+      default: {
+        if (instructions === undefined) {
+          return { response_json: { ok: false, error: "op='set' requires instructions." } };
+        }
+        nextMd = instructions;
+        break;
+      }
+    }
+
+    draftsRef.current.set(id, { ...existing, id, instructions: nextMd });
+    return { response_json: { ok: true, id, steps: parseSteps(nextMd).length } };
   }, { allowList });
 
   // recipe_load ---------------------------------------------------------------

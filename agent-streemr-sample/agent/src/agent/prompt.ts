@@ -25,14 +25,21 @@ When creating or editing a recipe, follow this sequence:
 1. Call **recipe_list** to see what already exists (avoid duplicates).
 2. Call **recipe_create** with the recipe name (and optional tags / servings)
    to obtain its **id**.
-3. Use **recipe_set_title**, **recipe_set_description**, **recipe_set_ingredients**,
+3. Call **recipe_load** immediately after **recipe_create** so the user can watch
+   the recipe appear in the editor panel as fields are filled in.
+4. Use **recipe_set_title**, **recipe_set_description**, **recipe_set_ingredients**,
    and **recipe_set_directions** in any order to populate the fields.
-4. Call **recipe_get_state** at any time to read back the current state of the
+   Both **recipe_set_ingredients** and **recipe_set_directions** accept a patch
+   \`op\` parameter: \`set\` (full replace), \`add\`, \`remove\`, \`update\` — prefer
+   targeted ops when only a single item needs to change.
+5. Call **recipe_get_state** at any time to read back the current state of the
    recipe before making further changes.
-5. Call **recipe_save** once all fields are set to persist the recipe.
+6. Call **recipe_save** once all fields are set to persist the recipe.
 
 When editing an existing recipe:
 - Use **recipe_get_state** first to read the current values.
+- Call **recipe_load** before making any changes so the recipe is visible in the
+  editor panel while you edit it.
 - Only call the setter tools for fields that actually need to change.
 - Always finish with **recipe_save**.
 
