@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentStreamProvider, useAgentStreamContext } from "@eetr/agent-streemr-react";
 import ToolCallLog from "./components/ToolCallLog";
 import ChatView from "./components/ChatView";
@@ -34,8 +34,11 @@ function InnerApp() {
   const { connect, status, messages, isStreaming, socket } = useAgentStreamContext();
   const prevMsgCountRef = useRef(0);
 
+  // Recipe selected in the left panel — driven by the recipe_load local tool
+  const [activeRecipeId, setActiveRecipeId] = useState<string | null>(null);
+
   // Register all recipe local-tool handlers (+ non-recipe fallback)
-  useRecipeTools(socket);
+  useRecipeTools(socket, { onLoadRecipe: setActiveRecipeId });
 
   // Connect once on mount
   useEffect(() => {
@@ -80,7 +83,7 @@ function InnerApp() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left half — recipe editor */}
         <div className="flex w-1/2 min-h-0 overflow-hidden bg-slate-950">
-          <RecipePanel />
+          <RecipePanel selectedRecipeId={activeRecipeId} />
         </div>
 
         {/* Divider */}

@@ -16,6 +16,7 @@ import {
   recipeSetIngredients,
   recipeSetDirections,
   recipeSave,
+  recipeLoad,
 } from "./tools/index.js";
 
 // ---------------------------------------------------------------------------
@@ -49,6 +50,7 @@ const agent = createAgent({
     recipeSetIngredients,
     recipeSetDirections,
     recipeSave,
+    recipeLoad,
   ],
   checkpointer,
   systemPrompt: SYSTEM_PROMPT,

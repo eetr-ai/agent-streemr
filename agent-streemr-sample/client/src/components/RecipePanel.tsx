@@ -208,7 +208,12 @@ function RecipeViewer({ recipe }: RecipeViewerProps) {
 // RecipePanel (root)
 // ---------------------------------------------------------------------------
 
-export default function RecipePanel() {
+interface RecipePanelProps {
+  /** When set, the panel will select this recipe id (e.g. driven by a local tool). */
+  selectedRecipeId?: string | null;
+}
+
+export default function RecipePanel({ selectedRecipeId }: RecipePanelProps = {}) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const isMountedRef = useRef(true);
@@ -226,6 +231,13 @@ export default function RecipePanel() {
       console.error("[RecipePanel] Failed to load recipes:", err);
     }
   }, [selectedId]);
+
+  // Sync external recipe selection (e.g. from recipe_load local tool)
+  useEffect(() => {
+    if (selectedRecipeId !== undefined && selectedRecipeId !== null) {
+      setSelectedId(selectedRecipeId);
+    }
+  }, [selectedRecipeId]);
 
   // Initial load + listen for updates dispatched by db helpers
   useEffect(() => {

@@ -49,6 +49,7 @@ const RECIPE_TOOLS = new Set([
   "recipe_set_ingredients",
   "recipe_set_directions",
   "recipe_save",
+  "recipe_load",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -79,10 +80,19 @@ function useNonRecipeFallback(socket: AgentSocket | null): void {
 // Main hook
 // ---------------------------------------------------------------------------
 
-export function useRecipeTools(socket: AgentSocket | null): void {
+export interface UseRecipeToolsOptions {
+  /** Called when recipe_load is invoked — should select the recipe in the UI. */
+  onLoadRecipe?: (id: string) => void;
+}
+
+export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: UseRecipeToolsOptions = {}): void {
   // In-memory drafts keyed by recipe id.
   // Lets the agent populate fields before calling recipe_save.
   const draftsRef = useRef<Map<string, Partial<Recipe>>>(new Map());
+
+  // Keep a stable ref to the latest onLoadRecipe callback
+  const onLoadRecipeRef = useRef(onLoadRecipe);
+  useEffect(() => { onLoadRecipeRef.current = onLoadRecipe; }, [onLoadRecipe]);
 
   // Interactive allow/deny allowList — every tool call pauses for user approval
   const { allowList } = useToolApproval();
@@ -166,6 +176,13 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     const { id, instructions } = args as { id: string; instructions: string };
     const existing = draftsRef.current.get(id) ?? {};
     draftsRef.current.set(id, { ...existing, id, instructions });
+    return { response_json: { ok: true, id } };
+  }, { allowList });
+
+  // recipe_load ---------------------------------------------------------------
+  useLocalToolHandler(socket, "recipe_load", async (args) => {
+    const { id } = args as { id: string };
+    onLoadRecipeRef.current?.(id);
     return { response_json: { ok: true, id } };
   }, { allowList });
 

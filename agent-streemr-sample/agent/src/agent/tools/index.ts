@@ -9,3 +9,4 @@ export { recipeSetDescription } from "./recipeSetDescription.js";
 export { recipeSetIngredients } from "./recipeSetIngredients.js";
 export { recipeSetDirections } from "./recipeSetDirections.js";
 export { recipeSave } from "./recipeSave.js";
+export { recipeLoad } from "./recipeLoad.js";
