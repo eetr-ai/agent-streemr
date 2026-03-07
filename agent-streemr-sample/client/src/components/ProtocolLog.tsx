@@ -12,6 +12,8 @@ interface ProtocolEntry {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload: any;
   expanded: boolean;
+  /** How many consecutive identical events were merged into this entry. */
+  count: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +102,13 @@ function EntryRow({ entry, onToggle }: { entry: ProtocolEntry; onToggle: (id: st
         {/* Description */}
         <span className="text-slate-500 truncate flex-1">{label}</span>
 
+        {/* Count pill */}
+        {entry.count > 1 && (
+          <span className="shrink-0 bg-slate-600 text-slate-300 text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full tabular-nums">
+            ×{entry.count}
+          </span>
+        )}
+
         {/* Timestamp */}
         <span className="text-slate-600 shrink-0 tabular-nums">{entry.ts}</span>
 
@@ -147,10 +156,20 @@ export default function ProtocolLog({ open }: ProtocolLogProps) {
   const addEntry = useCallback(
     (direction: ProtocolEntry["direction"], event: string, args: unknown[]) => {
       const payload = args.length === 0 ? null : args.length === 1 ? args[0] : args;
-      setEntries((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), ts: now(), direction, event, payload, expanded: false },
-      ]);
+      setEntries((prev) => {
+        const last = prev[prev.length - 1];
+        // Merge consecutive events of the same type and direction
+        if (last && last.event === event && last.direction === direction) {
+          return [
+            ...prev.slice(0, -1),
+            { ...last, count: last.count + 1, ts: now() },
+          ];
+        }
+        return [
+          ...prev,
+          { id: crypto.randomUUID(), ts: now(), direction, event, payload, expanded: false, count: 1 },
+        ];
+      });
     },
     [],
   );
@@ -207,7 +226,9 @@ export default function ProtocolLog({ open }: ProtocolLogProps) {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[0.65rem] text-slate-600 tabular-nums">{entries.length} events</span>
+          <span className="text-[0.65rem] text-slate-600 tabular-nums">
+            {entries.reduce((n, e) => n + e.count, 0)} events
+          </span>
           <button
             onClick={() => setEntries([])}
             className="text-[0.65rem] text-slate-500 hover:text-slate-300 transition-colors uppercase tracking-wider"
