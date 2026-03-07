@@ -35,7 +35,7 @@ function StatusBadge() {
 // Main chat view
 // ---------------------------------------------------------------------------
 export default function ChatView() {
-  const { messages, sendMessage, clearContext, status, isStreaming, error, socket } =
+  const { messages, sendMessage, clearContext, status, isStreaming, internalThought, error, socket } =
     useAgentStreamContext();
 
   const [input, setInput] = useState("");
@@ -109,7 +109,16 @@ export default function ChatView() {
             onDeny={deny}
           />
         ))}
-        <ThinkingPanel />
+        {isStreaming && <ThinkingPanel />}
+        {isStreaming && !internalThought && (
+          <div className="text-left">
+            <div className="inline-flex items-center gap-1 rounded-2xl bg-slate-700 px-4 py-3">
+              <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.32s]" />
+              <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.16s]" />
+              <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Input */}

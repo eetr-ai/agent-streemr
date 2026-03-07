@@ -211,9 +211,11 @@ function RecipeViewer({ recipe }: RecipeViewerProps) {
 interface RecipePanelProps {
   /** When set, the panel will select this recipe id (e.g. driven by a local tool). */
   selectedRecipeId?: string | null;
+  /** Called whenever the active selection changes (user click or external update). */
+  onSelect?: (id: string | null) => void;
 }
 
-export default function RecipePanel({ selectedRecipeId }: RecipePanelProps = {}) {
+export default function RecipePanel({ selectedRecipeId, onSelect }: RecipePanelProps = {}) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const isMountedRef = useRef(true);
@@ -236,7 +238,9 @@ export default function RecipePanel({ selectedRecipeId }: RecipePanelProps = {})
   useEffect(() => {
     if (selectedRecipeId !== undefined && selectedRecipeId !== null) {
       setSelectedId(selectedRecipeId);
+      onSelect?.(selectedRecipeId);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRecipeId]);
 
   // Initial load + listen for updates dispatched by db helpers
@@ -260,7 +264,10 @@ export default function RecipePanel({ selectedRecipeId }: RecipePanelProps = {})
       <RecipeList
         recipes={recipes}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={(id) => {
+          setSelectedId(id);
+          onSelect?.(id);
+        }}
         onRefresh={loadRecipes}
       />
       <RecipeViewer recipe={selectedRecipe} />

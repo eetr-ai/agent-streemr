@@ -7,6 +7,7 @@ import { MemorySaver } from "@langchain/langgraph";
 import type { AgentRunner, AgentStreamEvent } from "@eetr/agent-streemr";
 import { buildLangChainConfig } from "@eetr/agent-streemr";
 import { SYSTEM_PROMPT } from "./prompt.js";
+import { type UserContext, buildContextualMessage } from "./userContext.js";
 import {
   recipeList,
   recipeGetState,
@@ -60,22 +61,27 @@ const agent = createAgent({
 // AgentRunner — maps to the signature expected by createAgentSocketListener
 // ---------------------------------------------------------------------------
 
-export const streamAgentResponse: AgentRunner<object> = async function* (
+export const streamAgentResponse: AgentRunner<UserContext> = async function* (
   message,
   options,
 ) {
-  const { threadId } = options;
+  const { threadId, context } = options;
   console.log(`[stream] thread=${threadId} message="${message.slice(0, 80)}${message.length > 80 ? "..." : ""}"`)
 
+  const userContent = buildContextualMessage(message, context);
+  if (userContent !== message) {
+    console.log(`[stream] context injected for thread=${threadId}:`, JSON.stringify(context));
+  }
+
   const tokenStream = await agent.stream(
-    { messages: [{ role: "user", content: message }] },
+    { messages: [{ role: "user", content: userContent }] },
     {
       streamMode: "messages",
       configurable: buildLangChainConfig(options),
     },
   );
 
-  let tokenCount = 0;
+  let fullResponse = "";
   for await (const [token, metadata] of tokenStream) {
     // Only emit tokens from the model request node
     if (metadata.langgraph_node !== "model_request") continue;
@@ -93,13 +99,10 @@ export const streamAgentResponse: AgentRunner<object> = async function* (
     }
 
     if (text) {
-      tokenCount++;
-      console.log(`[stream] token #${tokenCount}: "${text.replace(/\n/g, "\\n")}"`);
-      yield { type: "agent_response", chunk: text, done: false } satisfies AgentStreamEvent;
+      fullResponse += text;
+      yield { type: "internal_token", token: text } satisfies AgentStreamEvent;
     }
   }
 
-  console.log(`[stream] done — ${tokenCount} token(s) emitted for thread=${threadId}`);
-
-  yield { type: "agent_response", done: true } satisfies AgentStreamEvent;
+  yield { type: "agent_response", chunk: fullResponse, done: true } satisfies AgentStreamEvent;
 };

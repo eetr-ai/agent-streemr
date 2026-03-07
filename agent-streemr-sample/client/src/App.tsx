@@ -31,10 +31,10 @@ const AGENT_URL =
 // Inner app — needs to be inside AgentStreamProvider to call the context hook
 // ---------------------------------------------------------------------------
 function InnerApp() {
-  const { connect, status, messages, isStreaming, socket } = useAgentStreamContext();
+  const { connect, status, messages, isStreaming, socket, setContext } = useAgentStreamContext();
   const prevMsgCountRef = useRef(0);
 
-  // Recipe selected in the left panel — driven by the recipe_load local tool
+  // Recipe selected in the left panel — driven by recipe_load tool or user click
   const [activeRecipeId, setActiveRecipeId] = useState<string | null>(null);
 
   // Register all recipe local-tool handlers (+ non-recipe fallback)
@@ -44,6 +44,11 @@ function InnerApp() {
   useEffect(() => {
     connect(THREAD_ID);
   }, [connect]);
+
+  // Keep the agent context in sync with the currently selected recipe
+  useEffect(() => {
+    setContext({ selectedRecipeId: activeRecipeId ?? null });
+  }, [activeRecipeId, setContext]);
 
   // Log connection status changes
   useEffect(() => {
@@ -83,7 +88,10 @@ function InnerApp() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left half — recipe editor */}
         <div className="flex w-1/2 min-h-0 overflow-hidden bg-slate-950">
-          <RecipePanel selectedRecipeId={activeRecipeId} />
+          <RecipePanel
+            selectedRecipeId={activeRecipeId}
+            onSelect={setActiveRecipeId}
+          />
         </div>
 
         {/* Divider */}

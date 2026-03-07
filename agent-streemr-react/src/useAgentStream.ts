@@ -88,6 +88,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
 
     socket.on("agent_response", ({ chunk, done }) => {
       setIsStreaming(!done);
+      if (done) setInternalThought("");
 
       setMessages((prev) => {
         // Find the last assistant message that is still streaming.
@@ -187,6 +188,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
 
     setMessages((prev) => [...prev, userMsg]);
     setInternalThought("");
+    setIsStreaming(true);
 
     socket.emit("message", topicName ? { text, topic_name: topicName } : { text });
   }, []);
