@@ -33,9 +33,55 @@
  * @status SCAFFOLD — implementation pending
  */
 
-export {};
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+export type {
+  AgentMessageRole,
+  AgentMessage,
+  ConnectionStatus,
+  UseAgentStreamOptions,
+  UseAgentStreamResult,
+  LocalToolHandlerResult,
+  AllowListDecision,
+  AllowList,
+  InMemoryAllowListResult,
+  // Protocol re-exports
+  MessagePayload,
+  LocalToolPayload,
+  LocalToolResponsePayload,
+  AgentResponsePayload,
+  InternalTokenPayload,
+  ContextClearedPayload,
+  ErrorPayload,
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "./types";
 
-// TODO: implement useAgentSocket
-// TODO: implement useAgentStream
-// TODO: implement AgentSocketProvider / useAgentSocketContext
-// TODO: implement useLocalToolHandler
+// ---------------------------------------------------------------------------
+// Core hook
+// ---------------------------------------------------------------------------
+export { useAgentStream } from "./useAgentStream";
+
+// ---------------------------------------------------------------------------
+// Local tool hooks
+// ---------------------------------------------------------------------------
+export {
+  useLocalToolHandler,
+  useLocalToolFallback,
+  type UseLocalToolHandlerOptions,
+} from "./useLocalToolHandler";
+
+// ---------------------------------------------------------------------------
+// AllowList
+// ---------------------------------------------------------------------------
+export { useInMemoryAllowList } from "./useInMemoryAllowList";
+
+// ---------------------------------------------------------------------------
+// Context
+// ---------------------------------------------------------------------------
+export {
+  AgentStreamProvider,
+  useAgentStreamContext,
+  type AgentStreamProviderProps,
+} from "./context";
