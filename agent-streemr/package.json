@@ -94,6 +94,9 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/eetr/agent-streemr.git"
+    "url": "https://github.com/eetr-ai/agent-streemr.git"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
