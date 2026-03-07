@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { getAllRecipes, type Recipe } from "../db/recipes";
+import { getAllRecipes, deleteRecipe, type Recipe } from "../db/recipes";
 
 marked.setOptions({ breaks: true });
 
@@ -104,9 +104,14 @@ function RecipeList({ recipes, selectedId, onSelect, onRefresh }: RecipeListProp
 
 interface RecipeViewerProps {
   recipe: Recipe | null;
+  onDelete?: () => void;
 }
 
-function RecipeViewer({ recipe }: RecipeViewerProps) {
+function RecipeViewer({ recipe, onDelete }: RecipeViewerProps) {
+  const [confirming, setConfirming] = useState(false);
+
+  // Reset confirmation state when the selected recipe changes
+  useEffect(() => { setConfirming(false); }, [recipe?.id]);
   if (!recipe) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-0 bg-slate-900/20">
@@ -197,9 +202,42 @@ function RecipeViewer({ recipe }: RecipeViewerProps) {
       )}
 
       {/* Footer */}
-      <p className="text-[0.65rem] text-slate-600 mt-6">
-        Last updated: {new Date(recipe.updatedAt).toLocaleString()}
-      </p>
+      <div className="flex items-center justify-between mt-6">
+        <p className="text-[0.65rem] text-slate-600">
+          Last updated: {new Date(recipe.updatedAt).toLocaleString()}
+        </p>
+        {onDelete && (
+          confirming ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Delete this recipe?</span>
+              <button
+                onClick={() => { setConfirming(false); onDelete(); }}
+                className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors"
+              >
+                Yes, delete
+              </button>
+              <button
+                onClick={() => setConfirming(false)}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirming(true)}
+              title="Delete recipe"
+              className="text-slate-600 hover:text-red-400 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" />
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+              </svg>
+            </button>
+          )
+        )}
+      </div>
     </div>
   );
 }
@@ -259,6 +297,17 @@ export default function RecipePanel({ selectedRecipeId, onSelect }: RecipePanelP
 
   const selectedRecipe = recipes.find((r) => r.id === selectedId) ?? null;
 
+  const handleDelete = useCallback(async () => {
+    if (!selectedId) return;
+    try {
+      await deleteRecipe(selectedId);
+      setSelectedId(null);
+      onSelect?.(null);
+    } catch (err) {
+      console.error("[RecipePanel] Failed to delete recipe:", err);
+    }
+  }, [selectedId, onSelect]);
+
   return (
     <div className="flex flex-col w-full h-full overflow-hidden">
       <RecipeList
@@ -270,7 +319,7 @@ export default function RecipePanel({ selectedRecipeId, onSelect }: RecipePanelP
         }}
         onRefresh={loadRecipes}
       />
-      <RecipeViewer recipe={selectedRecipe} />
+      <RecipeViewer recipe={selectedRecipe} onDelete={selectedRecipe ? handleDelete : undefined} />
     </div>
   );
 }
