@@ -2,7 +2,6 @@
   "files": [],
   "references": [
     { "path": "./agent-streemr" },
-    { "path": "./agent-streemr-react" },
-    { "path": "./agent-streemr-sample" }
+    { "path": "./agent-streemr-react" }
   ]
 }
