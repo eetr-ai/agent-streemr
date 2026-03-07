@@ -6,13 +6,23 @@ import { ChatOpenAI, tools as openAITools } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
 import type { AgentRunner, AgentStreamEvent } from "@eetr/agent-streemr";
 import { SYSTEM_PROMPT } from "./prompt.js";
+import {
+  recipeList,
+  recipeGetState,
+  recipeCreate,
+  recipeSetTitle,
+  recipeSetDescription,
+  recipeSetIngredients,
+  recipeSetDirections,
+  recipeSave,
+} from "./tools/index.js";
 
 // ---------------------------------------------------------------------------
 // Shared model + memory (process-lifetime singletons)
 // ---------------------------------------------------------------------------
 
 const model = new ChatOpenAI({
-  model: "gpt-5.2",
+  model: "gpt-5-mini",
   streaming: true,
 });
 
@@ -28,7 +38,17 @@ const webSearch = openAITools.webSearch({
 
 const agent = createAgent({
   model,
-  tools: [webSearch],
+  tools: [
+    webSearch,
+    recipeList,
+    recipeGetState,
+    recipeCreate,
+    recipeSetTitle,
+    recipeSetDescription,
+    recipeSetIngredients,
+    recipeSetDirections,
+    recipeSave,
+  ],
   checkpointer,
   systemPrompt: SYSTEM_PROMPT,
 });

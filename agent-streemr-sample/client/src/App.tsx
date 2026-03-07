@@ -3,6 +3,7 @@ import { AgentStreamProvider, useAgentStreamContext } from "@eetr/agent-streemr-
 import ToolCallLog from "./components/ToolCallLog";
 import ChatView from "./components/ChatView";
 import RecipePanel from "./components/RecipePanel";
+import { useRecipeTools } from "./hooks/useRecipeTools";
 
 // ---------------------------------------------------------------------------
 // Thread ID — persisted in localStorage so page refreshes keep conversation
@@ -29,8 +30,11 @@ const AGENT_URL =
 // Inner app — needs to be inside AgentStreamProvider to call the context hook
 // ---------------------------------------------------------------------------
 function InnerApp() {
-  const { connect, status, messages, isStreaming } = useAgentStreamContext();
+  const { connect, status, messages, isStreaming, socket } = useAgentStreamContext();
   const prevMsgCountRef = useRef(0);
+
+  // Register all recipe local-tool handlers (+ non-recipe fallback)
+  useRecipeTools(socket);
 
   // Connect once on mount
   useEffect(() => {

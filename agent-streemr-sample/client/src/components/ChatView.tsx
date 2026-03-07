@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   useAgentStreamContext,
-  useLocalToolFallback,
   type AgentMessage,
 } from "@eetr/agent-streemr-react";
 import MessageBubble from "./MessageBubble";
@@ -39,10 +38,6 @@ export default function ChatView() {
 
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
-
-  // Auto-reply notSupported for any tool call the agent might send (blank agent
-  // has no tools, but this future-proofs the sample).
-  useLocalToolFallback(socket);
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
