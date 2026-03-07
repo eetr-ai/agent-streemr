@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useAgentStreamContext } from "@eetr/agent-streemr-react";
 import type { LocalToolPayload } from "@eetr/agent-streemr-react";
+import { useToolApproval } from "../context/ToolApprovalContext";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function formatToolName(name: string): string {
+  return name
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,8 +30,10 @@ interface LogEntry {
 // ---------------------------------------------------------------------------
 export default function ToolCallLog() {
   const { socket } = useAgentStreamContext();
+  const { rememberedTools, forgetTool } = useToolApproval();
   const [log, setLog] = useState<LogEntry[]>([]);
   const [collapsed, setCollapsed] = useState(false);
+  const [allowListCollapsed, setAllowListCollapsed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -96,6 +109,47 @@ export default function ToolCallLog() {
             ))
           )}
           <div ref={bottomRef} />
+        </div>
+      )}
+
+      {/* ── Allowlist panel ─────────────────────────────────────── */}
+      {!collapsed && (
+        <div className="shrink-0 border-t border-slate-700">
+          <button
+            onClick={() => setAllowListCollapsed((c) => !c)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 select-none"
+          >
+            <span className="uppercase tracking-widest">Allowlist</span>
+            <span>{allowListCollapsed ? "▸" : "▾"}</span>
+          </button>
+
+          {!allowListCollapsed && (
+            <div className="max-h-40 overflow-y-auto p-2 space-y-1">
+              {rememberedTools.length === 0 ? (
+                <p className="text-xs text-slate-500 italic text-center py-2 px-1">
+                  No remembered tools yet.
+                </p>
+              ) : (
+                rememberedTools.map((toolName) => (
+                  <div
+                    key={toolName}
+                    className="flex items-center justify-between rounded bg-slate-700/60 px-2.5 py-1.5"
+                  >
+                    <span className="text-[0.68rem] text-emerald-400 font-mono">
+                      {formatToolName(toolName)}
+                    </span>
+                    <button
+                      onClick={() => forgetTool(toolName)}
+                      title="Remove from allowlist"
+                      className="text-slate-500 hover:text-red-400 transition-colors text-xs leading-none pl-2"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
     </aside>

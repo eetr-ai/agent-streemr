@@ -5,6 +5,8 @@ import {
 } from "@eetr/agent-streemr-react";
 import MessageBubble from "./MessageBubble";
 import ThinkingPanel from "./ThinkingPanel";
+import { ToolApprovalCard } from "./ToolApprovalCard";
+import { useToolApproval } from "../context/ToolApprovalContext";
 
 // ---------------------------------------------------------------------------
 // Connection status badge
@@ -38,6 +40,8 @@ export default function ChatView() {
 
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
+
+  const { pendingApprovals, approve, deny } = useToolApproval();
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
@@ -96,6 +100,14 @@ export default function ChatView() {
         )}
         {messages.map((msg: AgentMessage) => (
           <MessageBubble key={msg.id} message={msg} />
+        ))}
+        {pendingApprovals.map((approval) => (
+          <ToolApprovalCard
+            key={approval.id}
+            approval={approval}
+            onApprove={(id, remember) => approve(id, remember)}
+            onDeny={deny}
+          />
         ))}
         <ThinkingPanel />
       </div>

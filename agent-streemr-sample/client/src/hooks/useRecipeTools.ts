@@ -36,6 +36,7 @@ import {
   saveRecipe,
   type Recipe,
 } from "../db/recipes";
+import { useToolApproval } from "../context/ToolApprovalContext";
 
 type AgentSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -83,6 +84,9 @@ export function useRecipeTools(socket: AgentSocket | null): void {
   // Lets the agent populate fields before calling recipe_save.
   const draftsRef = useRef<Map<string, Partial<Recipe>>>(new Map());
 
+  // Interactive allow/deny allowList — every tool call pauses for user approval
+  const { allowList } = useToolApproval();
+
   // recipe_list ---------------------------------------------------------------
   useLocalToolHandler(socket, "recipe_list", async () => {
     const recipes = await getAllRecipes();
@@ -93,7 +97,7 @@ export function useRecipeTools(socket: AgentSocket | null): void {
       servings,
     }));
     return { response_json: { recipes: summaries } };
-  });
+  }, { allowList });
 
   // recipe_get_state ----------------------------------------------------------
   useLocalToolHandler(socket, "recipe_get_state", async (args) => {
@@ -107,7 +111,7 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     }
     const merged = { ...(stored ?? {}), ...draft };
     return { response_json: { recipe: merged } };
-  });
+  }, { allowList });
 
   // recipe_create -------------------------------------------------------------
   useLocalToolHandler(socket, "recipe_create", async (args) => {
@@ -131,7 +135,7 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     };
     draftsRef.current.set(id, draft);
     return { response_json: { id, name } };
-  });
+  }, { allowList });
 
   // recipe_set_title ----------------------------------------------------------
   useLocalToolHandler(socket, "recipe_set_title", async (args) => {
@@ -139,7 +143,7 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     const existing = draftsRef.current.get(id) ?? {};
     draftsRef.current.set(id, { ...existing, id, name });
     return { response_json: { ok: true, id, name } };
-  });
+  }, { allowList });
 
   // recipe_set_description ----------------------------------------------------
   useLocalToolHandler(socket, "recipe_set_description", async (args) => {
@@ -147,7 +151,7 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     const existing = draftsRef.current.get(id) ?? {};
     draftsRef.current.set(id, { ...existing, id, description });
     return { response_json: { ok: true, id } };
-  });
+  }, { allowList });
 
   // recipe_set_ingredients ----------------------------------------------------
   useLocalToolHandler(socket, "recipe_set_ingredients", async (args) => {
@@ -155,7 +159,7 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     const existing = draftsRef.current.get(id) ?? {};
     draftsRef.current.set(id, { ...existing, id, ingredients });
     return { response_json: { ok: true, id, count: ingredients.length } };
-  });
+  }, { allowList });
 
   // recipe_set_directions -----------------------------------------------------
   useLocalToolHandler(socket, "recipe_set_directions", async (args) => {
@@ -163,7 +167,7 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     const existing = draftsRef.current.get(id) ?? {};
     draftsRef.current.set(id, { ...existing, id, instructions });
     return { response_json: { ok: true, id } };
-  });
+  }, { allowList });
 
   // recipe_save ---------------------------------------------------------------
   useLocalToolHandler(socket, "recipe_save", async (args) => {
@@ -188,7 +192,7 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     const saved = await saveRecipe(toSave);
     draftsRef.current.delete(id); // clean up draft after persisting
     return { response_json: { ok: true, id: saved.id, name: saved.name } };
-  });
+  }, { allowList });
 
   // Fallback for non-recipe tools ---------------------------------------------
   useNonRecipeFallback(socket);

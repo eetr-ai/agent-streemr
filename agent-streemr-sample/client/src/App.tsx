@@ -4,6 +4,7 @@ import ToolCallLog from "./components/ToolCallLog";
 import ChatView from "./components/ChatView";
 import RecipePanel from "./components/RecipePanel";
 import { useRecipeTools } from "./hooks/useRecipeTools";
+import { ToolApprovalProvider } from "./context/ToolApprovalContext";
 
 // ---------------------------------------------------------------------------
 // Thread ID — persisted in localStorage so page refreshes keep conversation
@@ -102,7 +103,9 @@ export default function App() {
   return (
     // token is empty string — the sample agent does not validate tokens
     <AgentStreamProvider url={AGENT_URL} token="">
-      <InnerApp />
+      <ToolApprovalProvider>
+        <InnerApp />
+      </ToolApprovalProvider>
     </AgentStreamProvider>
   );
 }
