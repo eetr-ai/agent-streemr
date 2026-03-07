@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentStreamProvider, useAgentStreamContext } from "@eetr/agent-streemr-react";
 import ToolCallLog from "./components/ToolCallLog";
 import ChatView from "./components/ChatView";
 import RecipePanel from "./components/RecipePanel";
+import ProtocolLog from "./components/ProtocolLog";
 import { useRecipeTools } from "./hooks/useRecipeTools";
 import { ToolApprovalProvider } from "./context/ToolApprovalContext";
 import { RecipeProvider, useRecipeContext } from "./context/RecipeContext";
@@ -34,6 +35,7 @@ const AGENT_URL =
 function InnerApp() {
   const { connect, status, messages, isStreaming, socket, setContext } = useAgentStreamContext();
   const prevMsgCountRef = useRef(0);
+  const [showProtocolLog, setShowProtocolLog] = useState(false);
 
   // Recipe selection state — owned by RecipeContext
   const { selectedId: activeRecipeId } = useRecipeContext();
@@ -83,6 +85,19 @@ function InnerApp() {
         <span className="text-xs text-slate-400 font-mono bg-slate-700 px-2 py-0.5 rounded">
           sample
         </span>
+        <div className="flex-1" />
+        <button
+          onClick={() => setShowProtocolLog((v) => !v)}
+          className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded border transition-colors ${
+            showProtocolLog
+              ? "border-blue-500 text-blue-400 bg-blue-950/40 hover:bg-blue-950/60"
+              : "border-slate-600 text-slate-400 hover:text-slate-200 hover:border-slate-500"
+          }`}
+          title="Toggle Protocol Log"
+        >
+          <span className="font-mono">{showProtocolLog ? "▾" : "▸"}</span>
+          Protocol Log
+        </button>
       </header>
 
       {/* Two-column body */}
@@ -101,6 +116,9 @@ function InnerApp() {
           <ToolCallLog />
         </div>
       </div>
+
+      {/* Protocol Log — collapsible bottom panel */}
+      <ProtocolLog open={showProtocolLog} />
     </div>
   );
 }
