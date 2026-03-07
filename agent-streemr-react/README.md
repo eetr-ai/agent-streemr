@@ -170,7 +170,6 @@ function App() {
 
   return (
     <>
-      {/* Render current permissions */}
       {Object.entries(entries).map(([tool, permitted]) => (
         <div key={tool}>
           {tool}: {permitted ? "✅" : "❌"}
@@ -183,16 +182,61 @@ function App() {
 }
 ```
 
+### Interactive per-request approval (async `check`)
+
+Because `check()` can return `Promise<AllowListDecision>`, you can suspend a tool
+call until the user explicitly clicks Allow or Deny in the UI:
+
+```tsx
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { AllowList, AllowListDecision } from "@eetr/agent-streemr-react";
+
+function useInteractiveAllowList() {
+  const [pending, setPending] = useState<{ id: string; toolName: string; args: object }[]>([]);
+  const resolversRef = useRef<Map<string, (d: AllowListDecision) => void>>(new Map());
+
+  const allowList = useMemo<AllowList>(() => ({
+    check(toolName, args): Promise<AllowListDecision> {
+      return new Promise((resolve) => {
+        const id = crypto.randomUUID();
+        resolversRef.current.set(id, resolve);
+        setPending((prev) => [...prev, { id, toolName, args }]);
+      });
+    },
+  }), []);
+
+  const approve = useCallback((id: string) => {
+    resolversRef.current.get(id)?.('allowed');
+    resolversRef.current.delete(id);
+    setPending((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  const deny = useCallback((id: string) => {
+    resolversRef.current.get(id)?.('denied');
+    resolversRef.current.delete(id);
+    setPending((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  return { allowList, pending, approve, deny };
+}
+```
+
+Each pending entry maps to an inline UI card. `useLocalToolHandler` already awaits
+the result of `check()`, so the agent is suspended until the user acts.
+
+See `agent-streemr-sample` for a full production implementation including
+LocalStorage-backed "Remember for this tool" persistence.
+
 ### Supplying a custom AllowList
 
-Implement the `AllowList` interface for server-side or persisted policy. The
-`check()` method receives both the tool name and the request arguments so
-decisions can be argument-aware (e.g. allowlist file reads only for certain
-paths):
+Implement the `AllowList` interface for server-side, persisted, or interactive
+policy. `check()` can return a `Promise`, which suspends the tool handler until
+the promise resolves — allowing interactive UIs where the user approves each call:
 
 ```ts
 import type { AllowList } from "@eetr/agent-streemr-react";
 
+// Server-side / async policy check
 const policyList: AllowList = {
   async check(toolName, args) {
     const allowed = await myApi.checkPermission(toolName, args);
@@ -424,6 +468,8 @@ type LocalToolHandlerResult =
 type AllowListDecision = "allowed" | "denied" | "unknown";
 
 interface AllowList {
+  // May return a Promise — the handler is suspended until it resolves.
+  // This enables interactive per-request approval UIs.
   check(toolName: string, args: object): AllowListDecision | Promise<AllowListDecision>;
 }
 ```

@@ -11,8 +11,8 @@
 | Package | Description | Status |
 |---------|-------------|--------|
 | [`agent-streemr`](./agent-streemr) | Core library: protocol types, socket listener, registry, adapter, LangChain factory | ✅ Ready |
-| [`agent-streemr-react`](./agent-streemr-react) | React hooks and context for connecting a UI to an agent-streemr server | 🚧 Scaffold |
-| [`agent-streemr-sample`](./agent-streemr-sample) | Reference implementation: minimal Socket.io + LangChain agent server | 🚧 Scaffold |
+| [`agent-streemr-react`](./agent-streemr-react) | React hooks and context for connecting a UI to an agent-streemr server | ✅ Ready |
+| [`agent-streemr-sample`](./agent-streemr-sample) | Full-stack reference app: LangGraph agent + React/Vite chat UI with recipe management | ✅ Ready |
 
 ---
 
@@ -25,44 +25,56 @@ import {
   createAgentSocketListener,
   LocalToolRegistry,
   createLocalTool,
+  EMIT_LOCAL_TOOL_KEY,
+  EMIT_LOCAL_TOOL_FIRE_FORGET_KEY,
+  SYNC_REGISTRY_KEY,
 } from "@eetr/agent-streemr";
 import { z } from "zod";
 
 // 1. Define your per-thread context shape
-type MyCtx = { userId: string; prefs?: Record<string, unknown> };
+type MyCtx = { userId: string };
 
-// 2. Create and populate the registry
+// 2. Define local tools (run on the client, result returned to agent)
+const getLocation = createLocalTool({
+  tool_name: "get_location",
+  schema: z.object({}),
+  buildRequest: () => ({}),
+  description: "Get the user's current location from the client.",
+  mode: "sync",   // agent awaits the client's response before continuing
+});
+
+// 3. Create the registry (optional — needed only for async/sync callbacks)
 const registry = new LocalToolRegistry<MyCtx>();
 
-const getPrefs = createLocalTool({
-  tool_name: "get_prefs",
-  schema: z.object({ fields: z.array(z.string()).min(1) }),
-  buildRequest: (args) => ({ fields: args.fields }),
-  description: "Fetch user preferences from the client.",
-  // mode: "async" is the default — emit and continue; response arrives on next turn
-});
-
-// Side-effect: store prefs in context when client responds
-registry.register("get_prefs", {
-  onSuccess: (ctx, json) => { ctx.prefs = json as Record<string, unknown>; },
-  onDenied:  (ctx)       => { ctx.prefs = {}; },
-});
-
-// 3. Wire the listener
+// 4. Wire the listener
 const io = new Server(createServer(), { cors: { origin: "*" } });
 
 createAgentSocketListener({
   io,
   authenticate: async (socket) => {
     const token = socket.handshake.auth?.token as string | undefined;
-    if (!token || !await verify(token)) return null;        // return null to reject
+    if (!token || !(await verify(token))) return null; // null rejects the connection
     const threadId = socket.handshake.auth?.installation_id as string;
     return { threadId };
   },
   createContext: (_threadId) => ({ userId: "unknown" }),
   localToolRegistry: registry,
-  getAgentRunner: (_threadId) => (message, options) =>
-    streamAgentResponse(message, { ...options, tools: [getPrefs] }),
+  getAgentRunner: (_threadId) =>
+    async (message, { threadId, emitLocalTool, emitLocalToolFireAndForget, localToolRegistry }) => {
+      // Build your LangGraph agent here
+      const stream = await agent.stream(
+        { messages: [{ role: "user", content: message }] },
+        {
+          configurable: {
+            thread_id: threadId,
+            [EMIT_LOCAL_TOOL_KEY]: emitLocalTool,
+            [EMIT_LOCAL_TOOL_FIRE_FORGET_KEY]: emitLocalToolFireAndForget,
+            [SYNC_REGISTRY_KEY]: localToolRegistry,
+          },
+        }
+      );
+      return stream;
+    },
 });
 ```
 
@@ -111,10 +123,6 @@ createAgentSocketListener({
 | `agent_response` | `{ chunk?, done }` | Final assistant reply |
 | `context_cleared` | `{ message }` | Broadcast: context was reset |
 | `error` | `{ message }` | Error notification |
-
----
-
-## Local Tool Modes
 
 `createLocalTool` supports three execution modes:
 
