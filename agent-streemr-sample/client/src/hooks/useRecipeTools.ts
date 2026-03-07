@@ -37,6 +37,7 @@ import {
   type Recipe,
 } from "../db/recipes";
 import { useToolApproval } from "../context/ToolApprovalContext";
+import { useRecipeContext } from "../context/RecipeContext";
 
 type AgentSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -80,19 +81,15 @@ function useNonRecipeFallback(socket: AgentSocket | null): void {
 // Main hook
 // ---------------------------------------------------------------------------
 
-export interface UseRecipeToolsOptions {
-  /** Called when recipe_load is invoked — should select the recipe in the UI. */
-  onLoadRecipe?: (id: string) => void;
-}
-
-export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: UseRecipeToolsOptions = {}): void {
+export function useRecipeTools(socket: AgentSocket | null): void {
   // In-memory drafts keyed by recipe id.
   // Lets the agent populate fields before calling recipe_save.
   const draftsRef = useRef<Map<string, Partial<Recipe>>>(new Map());
 
-  // Keep a stable ref to the latest onLoadRecipe callback
-  const onLoadRecipeRef = useRef(onLoadRecipe);
-  useEffect(() => { onLoadRecipeRef.current = onLoadRecipe; }, [onLoadRecipe]);
+  // Recipe selection — driven directly from context
+  const { select } = useRecipeContext();
+  const selectRef = useRef(select);
+  useEffect(() => { selectRef.current = select; }, [select]);
 
   // Interactive allow/deny allowList — every tool call pauses for user approval
   const { allowList } = useToolApproval();
@@ -145,7 +142,7 @@ export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: Use
     };
     draftsRef.current.set(id, draft);
     await saveRecipe(draft);
-    onLoadRecipeRef.current?.(id);
+    selectRef.current(id);
     return { response_json: { id, name } };
   }, { allowList });
 
@@ -309,7 +306,7 @@ export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: Use
   // recipe_load ---------------------------------------------------------------
   useLocalToolHandler(socket, "recipe_load", async (args) => {
     const { id } = args as { id: string };
-    onLoadRecipeRef.current?.(id);
+    selectRef.current(id);
     return { response_json: { ok: true, id } };
   }, { allowList });
 

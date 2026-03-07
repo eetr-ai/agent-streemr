@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { AgentStreamProvider, useAgentStreamContext } from "@eetr/agent-streemr-react";
 import ToolCallLog from "./components/ToolCallLog";
 import ChatView from "./components/ChatView";
 import RecipePanel from "./components/RecipePanel";
 import { useRecipeTools } from "./hooks/useRecipeTools";
 import { ToolApprovalProvider } from "./context/ToolApprovalContext";
+import { RecipeProvider, useRecipeContext } from "./context/RecipeContext";
 
 // ---------------------------------------------------------------------------
 // Thread ID — persisted in localStorage so page refreshes keep conversation
@@ -34,11 +35,11 @@ function InnerApp() {
   const { connect, status, messages, isStreaming, socket, setContext } = useAgentStreamContext();
   const prevMsgCountRef = useRef(0);
 
-  // Recipe selected in the left panel — driven by recipe_load tool or user click
-  const [activeRecipeId, setActiveRecipeId] = useState<string | null>(null);
+  // Recipe selection state — owned by RecipeContext
+  const { selectedId: activeRecipeId } = useRecipeContext();
 
   // Register all recipe local-tool handlers (+ non-recipe fallback)
-  useRecipeTools(socket, { onLoadRecipe: setActiveRecipeId });
+  useRecipeTools(socket);
 
   // Connect once on mount
   useEffect(() => {
@@ -88,10 +89,7 @@ function InnerApp() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left half — recipe editor */}
         <div className="flex w-1/2 min-h-0 overflow-hidden bg-slate-950">
-          <RecipePanel
-            selectedRecipeId={activeRecipeId}
-            onSelect={setActiveRecipeId}
-          />
+          <RecipePanel />
         </div>
 
         {/* Divider */}
@@ -115,7 +113,9 @@ export default function App() {
     // token is empty string — the sample agent does not validate tokens
     <AgentStreamProvider url={AGENT_URL} token="">
       <ToolApprovalProvider>
-        <InnerApp />
+        <RecipeProvider>
+          <InnerApp />
+        </RecipeProvider>
       </ToolApprovalProvider>
     </AgentStreamProvider>
   );

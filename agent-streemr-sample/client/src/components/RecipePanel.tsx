@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { getAllRecipes, deleteRecipe, type Recipe } from "../db/recipes";
+import { type Recipe } from "../db/recipes";
+import { useRecipeContext } from "../context/RecipeContext";
 
 marked.setOptions({ breaks: true });
 
@@ -248,79 +249,20 @@ function RecipeViewer({ recipe }: RecipeViewerProps) {
 // RecipePanel (root)
 // ---------------------------------------------------------------------------
 
-interface RecipePanelProps {
-  /** When set, the panel will select this recipe id (e.g. driven by a local tool). */
-  selectedRecipeId?: string | null;
-  /** Called whenever the active selection changes (user click or external update). */
-  onSelect?: (id: string | null) => void;
-}
+export default function RecipePanel() {
+  const { recipes, selectedId, selectedRecipe, select, reload, deleteById } = useRecipeContext();
 
-export default function RecipePanel({ selectedRecipeId, onSelect }: RecipePanelProps = {}) {
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const isMountedRef = useRef(true);
-
-  const loadRecipes = useCallback(async () => {
-    try {
-      const list = await getAllRecipes();
-      if (!isMountedRef.current) return;
-      setRecipes(list);
-      // If current selection disappears, deselect
-      if (selectedId && !list.find((r) => r.id === selectedId)) {
-        setSelectedId(list[0]?.id ?? null);
-      }
-    } catch (err) {
-      console.error("[RecipePanel] Failed to load recipes:", err);
-    }
-  }, [selectedId]);
-
-  // Sync external recipe selection (e.g. from recipe_load local tool)
-  useEffect(() => {
-    if (selectedRecipeId !== undefined && selectedRecipeId !== null) {
-      setSelectedId(selectedRecipeId);
-      onSelect?.(selectedRecipeId);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRecipeId]);
-
-  // Initial load + listen for updates dispatched by db helpers
-  useEffect(() => {
-    isMountedRef.current = true;
-    loadRecipes();
-
-    const handler = () => loadRecipes();
-    window.addEventListener("recipes-updated", handler);
-
-    return () => {
-      isMountedRef.current = false;
-      window.removeEventListener("recipes-updated", handler);
-    };
-  }, [loadRecipes]);
-
-  const selectedRecipe = recipes.find((r) => r.id === selectedId) ?? null;
-
-  const handleDelete = useCallback(async (id: string) => {
-    try {
-      await deleteRecipe(id);
-      if (selectedId === id) {
-        setSelectedId(null);
-        onSelect?.(null);
-      }
-    } catch (err) {
-      console.error("[RecipePanel] Failed to delete recipe:", err);
-    }
-  }, [selectedId, onSelect]);
+  const handleDelete = async (id: string) => {
+    await deleteById(id);
+  };
 
   return (
     <div className="flex flex-col w-full h-full overflow-hidden">
       <RecipeList
         recipes={recipes}
         selectedId={selectedId}
-        onSelect={(id) => {
-          setSelectedId(id);
-          onSelect?.(id);
-        }}
-        onRefresh={loadRecipes}
+        onSelect={select}
+        onRefresh={reload}
         onDelete={handleDelete}
       />
       <RecipeViewer recipe={selectedRecipe} />

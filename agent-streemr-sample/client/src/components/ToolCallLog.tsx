@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useAgentStreamContext } from "@eetr/agent-streemr-react";
 import type { LocalToolPayload } from "@eetr/agent-streemr-react";
 import { useToolApproval } from "../context/ToolApprovalContext";
+import { bootstrapProvider, type ReducerAction } from "@eetr/react-reducer-utils";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,43 +27,83 @@ interface LogEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Component
+// Reducer
 // ---------------------------------------------------------------------------
-export default function ToolCallLog() {
+interface ToolCallLogState {
+  log: LogEntry[];
+  collapsed: boolean;
+  allowListCollapsed: boolean;
+}
+
+export enum ToolCallLogActionType {
+  ADD_ENTRY                  = "ADD_ENTRY",
+  TOGGLE_COLLAPSED           = "TOGGLE_COLLAPSED",
+  TOGGLE_ALLOWLIST_COLLAPSED = "TOGGLE_ALLOWLIST_COLLAPSED",
+}
+
+const initialState: ToolCallLogState = {
+  log: [],
+  collapsed: false,
+  allowListCollapsed: false,
+};
+
+function reducer(
+  state: ToolCallLogState,
+  action: ReducerAction<ToolCallLogActionType>,
+): ToolCallLogState {
+  switch (action.type) {
+    case ToolCallLogActionType.ADD_ENTRY:
+      return { ...state, log: [...state.log, action.data as LogEntry] };
+    case ToolCallLogActionType.TOGGLE_COLLAPSED:
+      return { ...state, collapsed: !state.collapsed };
+    case ToolCallLogActionType.TOGGLE_ALLOWLIST_COLLAPSED:
+      return { ...state, allowListCollapsed: !state.allowListCollapsed };
+    default:
+      return state;
+  }
+}
+
+const { Provider: ToolCallLogProvider, useContextAccessors: useToolCallLogState } =
+  bootstrapProvider<ToolCallLogState, ReducerAction<ToolCallLogActionType>>(reducer, initialState);
+
+// ---------------------------------------------------------------------------
+// Inner component
+// ---------------------------------------------------------------------------
+function ToolCallLogInner() {
+  const { state, dispatch } = useToolCallLogState();
   const { socket } = useAgentStreamContext();
   const { rememberedTools, forgetTool } = useToolApproval();
-  const [log, setLog] = useState<LogEntry[]>([]);
-  const [collapsed, setCollapsed] = useState(false);
-  const [allowListCollapsed, setAllowListCollapsed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!socket) return;
 
     const onLocalTool = (data: LocalToolPayload) => {
-      setLog((prev) => [
-        ...prev,
-        {
+      dispatch({
+        type: ToolCallLogActionType.ADD_ENTRY,
+        data: {
           id: crypto.randomUUID(),
           ts: new Date().toLocaleTimeString(),
           direction: "request",
           toolName: data.tool_name,
           requestId: data.request_id.slice(0, 8) + "…",
           detail: data.args_json ? JSON.stringify(data.args_json) : "—",
-        },
-      ]);
+        } satisfies LogEntry,
+      });
     };
 
     socket.on("local_tool", onLocalTool);
     return () => {
       socket.off("local_tool", onLocalTool);
     };
-  }, [socket]);
+  }, [socket, dispatch]);
 
   // Auto-scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [log]);
+  }, [state.log]);
+
+  const { log, collapsed, allowListCollapsed } = state;
 
   return (
     <aside
@@ -71,7 +112,7 @@ export default function ToolCallLog() {
       }`}
     >
       <button
-        onClick={() => setCollapsed((c) => !c)}
+        onClick={() => dispatch({ type: ToolCallLogActionType.TOGGLE_COLLAPSED })}
         className="flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 border-b border-slate-700 shrink-0 select-none"
         title={collapsed ? "Expand tool log" : "Collapse tool log"}
       >
@@ -116,7 +157,7 @@ export default function ToolCallLog() {
       {!collapsed && (
         <div className="shrink-0 border-t border-slate-700">
           <button
-            onClick={() => setAllowListCollapsed((c) => !c)}
+            onClick={() => dispatch({ type: ToolCallLogActionType.TOGGLE_ALLOWLIST_COLLAPSED })}
             className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 select-none"
           >
             <span className="uppercase tracking-widest">Allowlist</span>
@@ -153,5 +194,16 @@ export default function ToolCallLog() {
         </div>
       )}
     </aside>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Export — self-contained with its own provider
+// ---------------------------------------------------------------------------
+export default function ToolCallLog() {
+  return (
+    <ToolCallLogProvider>
+      <ToolCallLogInner />
+    </ToolCallLogProvider>
   );
 }
