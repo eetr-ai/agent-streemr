@@ -35,7 +35,7 @@ function StatusBadge() {
 // Main chat view
 // ---------------------------------------------------------------------------
 export default function ChatView() {
-  const { messages, sendMessage, clearContext, status, isStreaming, internalThought, error, socket } =
+  const { messages, sendMessage, clearContext, status, isStreaming, isWorking, internalThought, error, socket } =
     useAgentStreamContext();
 
   const [input, setInput] = useState("");
@@ -48,7 +48,7 @@ export default function ChatView() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  const canSend = status === "connected" && !isStreaming && input.trim().length > 0;
+  const canSend = status === "connected" && !isStreaming && !isWorking && input.trim().length > 0;
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -109,8 +109,8 @@ export default function ChatView() {
             onDeny={deny}
           />
         ))}
-        {isStreaming && <ThinkingPanel />}
-        {isStreaming && !internalThought && (
+        <ThinkingPanel />
+        {(isWorking || isStreaming) && !internalThought && (
           <div className="text-left">
             <div className="inline-flex items-center gap-1 rounded-2xl bg-slate-700 px-4 py-3">
               <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.32s]" />
@@ -133,7 +133,7 @@ export default function ChatView() {
           placeholder={
             status === "connected" ? "Type a message… (Enter to send)" : "Connecting…"
           }
-          disabled={status !== "connected" || isStreaming}
+          disabled={status !== "connected" || isStreaming || isWorking}
           rows={1}
           className="flex-1 bg-slate-700 text-slate-100 placeholder-slate-400 rounded-xl px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 leading-relaxed max-h-40 overflow-auto"
           style={{ fieldSizing: "content" } as React.CSSProperties}
