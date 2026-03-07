@@ -7,8 +7,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx --watch src/server.ts",
-    "start": "node dist/server.js",
+    "dev": "tsx --watch src/bootstrap/index.ts",
+    "start": "node dist/bootstrap/index.js",
     "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo"
