@@ -10,7 +10,7 @@ interface ProtocolEntry {
   direction: "outgoing" | "incoming";
   event: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload: any;
+  payloads: any[];
   expanded: boolean;
   /** How many consecutive identical events were merged into this entry. */
   count: number;
@@ -119,15 +119,26 @@ function EntryRow({ entry, onToggle }: { entry: ProtocolEntry; onToggle: (id: st
       {/* Summary line */}
       {!entry.expanded && (
         <div className="px-2.5 pb-1.5 text-slate-500 truncate">
-          {summarisePayload(entry.event, entry.payload)}
+          {summarisePayload(entry.event, entry.payloads[entry.payloads.length - 1])}
         </div>
       )}
 
-      {/* Expanded payload */}
+      {/* Expanded payloads */}
       {entry.expanded && (
-        <pre className="px-2.5 pb-2 text-slate-300 whitespace-pre-wrap break-all overflow-x-auto max-h-48 overflow-y-auto border-t border-slate-700/50 mt-0.5 pt-1.5">
-          {formatPayload(entry.payload)}
-        </pre>
+        <div className="border-t border-slate-700/50 mt-0.5 max-h-64 overflow-y-auto">
+          {entry.payloads.map((p, i) => (
+            <div key={i} className="border-b border-slate-700/30 last:border-b-0">
+              {entry.count > 1 && (
+                <div className="px-2.5 pt-1.5 text-[0.6rem] text-slate-600 select-none">
+                  #{i + 1}
+                </div>
+              )}
+              <pre className="px-2.5 py-1.5 text-slate-300 whitespace-pre-wrap break-all overflow-x-auto">
+                {formatPayload(p)}
+              </pre>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -162,12 +173,12 @@ export default function ProtocolLog({ open }: ProtocolLogProps) {
         if (last && last.event === event && last.direction === direction) {
           return [
             ...prev.slice(0, -1),
-            { ...last, count: last.count + 1, ts: now() },
+            { ...last, count: last.count + 1, ts: now(), payloads: [...last.payloads, payload] },
           ];
         }
         return [
           ...prev,
-          { id: crypto.randomUUID(), ts: now(), direction, event, payload, expanded: false, count: 1 },
+          { id: crypto.randomUUID(), ts: now(), direction, event, payloads: [payload], expanded: false, count: 1 },
         ];
       });
     },
