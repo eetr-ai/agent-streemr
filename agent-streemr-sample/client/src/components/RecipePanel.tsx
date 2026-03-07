@@ -204,7 +204,10 @@ function RecipeViewer({ recipe }: RecipeViewerProps) {
 
       {/* Description */}
       {recipe.description && (
-        <p className="text-sm text-slate-300 mb-4 leading-relaxed">{recipe.description}</p>
+        <div
+          className="chat-markdown text-sm text-slate-300 mb-4 leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(recipe.description) }}
+        />
       )}
 
       {/* Ingredients */}
