@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { AgentStreamProvider, useAgentStreamContext } from "@eetr/agent-streemr-react";
-import ChatView from "./components/ChatView";
 import ThinkingPanel from "./components/ThinkingPanel";
 import ToolCallLog from "./components/ToolCallLog";
+import ChatView from "./components/ChatView";
 
 // ---------------------------------------------------------------------------
 // Thread ID — persisted in localStorage so page refreshes keep conversation
