@@ -82,25 +82,54 @@ export const streamAgentResponse: AgentRunner<UserContext> = async function* (
   );
 
   let fullResponse = "";
+  // Track announced tool call IDs so we emit each tool name only once.
+  const announcedToolIds = new Set<string>();
+
+  // Node names that produce model output — covers both LangGraph JS ("model_request")
+  // and the Python-style convention ("model") used in the user's sample.
+  const MODEL_NODES = new Set(["model_request", "model"]);
+
   for await (const [token, metadata] of tokenStream) {
-    // Only emit tokens from the model request node
-    if (metadata.langgraph_node !== "model_request") continue;
+    if (!MODEL_NODES.has(metadata.langgraph_node)) continue;
 
-    let text = "";
+    // Announce server-side tool calls as internal tokens so the thinking panel
+    // can show a "🔧 Calling: <name>…" status without touching the protocol.
+    const toolCallChunks = (token as { tool_call_chunks?: Array<{ name?: string | null; id?: string | null }> }).tool_call_chunks;
+    if (Array.isArray(toolCallChunks)) {
+      for (const chunk of toolCallChunks) {
+        if (!chunk.name) continue;
+        const key = chunk.id ?? chunk.name;
+        if (!announcedToolIds.has(key)) {
+          announcedToolIds.add(key);
+          yield { type: "internal_token", token: `\n🔧 Calling: ${chunk.name}…\n` } satisfies AgentStreamEvent;
+        }
+      }
+    }
 
-    // New API: normalized content blocks
+    let reasoningText = "";
+    let responseText = "";
+
     if (Array.isArray(token.contentBlocks) && token.contentBlocks.length > 0) {
       for (const block of token.contentBlocks) {
-        if (block.type === "text" && block.text) text += block.text;
+        // "reasoning" blocks — stream to the thinking panel
+        if (block.type === "reasoning" && block.thinking) {
+          reasoningText += block.thinking;
+        } else if (block.type === "text" && block.text) {
+          responseText += block.text;
+        }
       }
     // Fallback: plain string content
     } else if (typeof token.content === "string" && token.content) {
-      text = token.content;
+      responseText = token.content;
     }
 
-    if (text) {
-      fullResponse += text;
-      yield { type: "internal_token", token: text } satisfies AgentStreamEvent;
+    if (reasoningText) {
+      yield { type: "internal_token", token: reasoningText } satisfies AgentStreamEvent;
+    }
+
+    if (responseText) {
+      fullResponse += responseText;
+      yield { type: "internal_token", token: responseText } satisfies AgentStreamEvent;
     }
   }
 
