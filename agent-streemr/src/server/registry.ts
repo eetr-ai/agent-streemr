@@ -85,6 +85,17 @@ export type HandleResponseResult = {
   remainingCount: number;
 };
 
+/** Tool execution kind inferred while handling a response. */
+export type HandledToolKind = "async" | "sync";
+
+/**
+ * Tuple returned by `handleResponse`.
+ *
+ * - index `0`: inferred tool kind (`"sync"` if a sync awaiter was resolved, otherwise `"async"`).
+ * - index `1`: handling metadata.
+ */
+export type HandleResponseOutcome = [HandledToolKind, HandleResponseResult];
+
 // ---------------------------------------------------------------------------
 // LocalToolRegistry
 // ---------------------------------------------------------------------------
@@ -253,8 +264,10 @@ export class LocalToolRegistry<TContext> {
    * 2. Dispatches to the registered processor (if any) for side-effects on `ctx`.
    * 3. Resolves the sync awaiter promise (if any).
    *
-   * @returns `{ remainingCount }` indicating how many requests are still pending
-   *          for this thread, or `null` if the `request_id` was not found.
+  * @returns `[toolKind, { remainingCount }]` indicating how many requests are
+  *          still pending for this thread and whether this response resolved a
+  *          sync awaiter (`"sync"`) or not (`"async"`). Returns `null` if the
+  *          `request_id` was not found.
    */
   handleResponse(args: {
     ctx: TContext;
@@ -264,7 +277,7 @@ export class LocalToolRegistry<TContext> {
     status: LocalToolResponseStatus;
     responseJson?: object;
     errorMessage?: string;
-  }): HandleResponseResult | null {
+  }): HandleResponseOutcome | null {
     const { ctx, threadId, request_id, tool_name, status, responseJson, errorMessage } = args;
     const tid = threadId.trim();
     const rid = request_id.trim();
@@ -291,7 +304,7 @@ export class LocalToolRegistry<TContext> {
       threadMap.delete(rid);
       if (threadMap.size === 0) this._awaiting.delete(tid);
       syncAwaiter.resolve(result);
-      return { remainingCount: threadMap.size };
+      return ["sync", { remainingCount: threadMap.size }];
     }
 
     if (!entry) {
@@ -310,7 +323,7 @@ export class LocalToolRegistry<TContext> {
 
     threadMap.delete(rid);
     if (threadMap.size === 0) this._awaiting.delete(tid);
-    return { remainingCount: threadMap.size };
+    return ["async", { remainingCount: threadMap.size }];
   }
 
   // -------------------------------------------------------------------------

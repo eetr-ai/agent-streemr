@@ -6,7 +6,6 @@ import { z } from "zod";
 import {
   createLocalTool,
   EMIT_LOCAL_TOOL_KEY,
-  EMIT_LOCAL_TOOL_FIRE_FORGET_KEY,
   SYNC_REGISTRY_KEY,
 } from "./localTool";
 
@@ -53,7 +52,7 @@ describe("createLocalTool", () => {
       const tool = createLocalTool({ tool_name: "my_tool", schema, buildRequest, description: "d" });
       const result = await (tool as any).func({ query: "hello" }, undefined, makeConfig({ [EMIT_LOCAL_TOOL_KEY]: emit }));
 
-      expect(emit).toHaveBeenCalledWith({ tool_name: "my_tool", args_json: { q: "hello" } });
+      expect(emit).toHaveBeenCalledWith({ tool_name: "my_tool", args_json: { q: "hello" }, toolType: "tracked" });
       expect(typeof result).toBe("string");
       expect(result.length).toBeGreaterThan(0);
     });
@@ -95,7 +94,7 @@ describe("createLocalTool", () => {
         [SYNC_REGISTRY_KEY]: registry,
       }));
 
-      expect(emit).toHaveBeenCalledWith({ tool_name: "sync_tool", args_json: { q: "test" } });
+      expect(emit).toHaveBeenCalledWith({ tool_name: "sync_tool", args_json: { q: "test" }, toolType: "tracked" });
       expect(registry.awaitResponse).toHaveBeenCalledWith({
         threadId: "thread-1",
         request_id: "req-sync",
@@ -144,12 +143,12 @@ describe("createLocalTool", () => {
   // -------------------------------------------------------------------------
 
   describe("mode: fire_and_forget", () => {
-    it("calls emitLocalToolFireAndForget with the correct payload and returns placeholder", async () => {
-      const emit = vi.fn();
+    it("calls the unified emitter with toolType fire_and_forget and returns placeholder", async () => {
+      const emit = vi.fn().mockReturnValue(null);
       const tool = createLocalTool({ tool_name: "ff_tool", schema, buildRequest, description: "d", mode: "fire_and_forget" });
-      const result = await (tool as any).func({ query: "ping" }, undefined, makeConfig({ [EMIT_LOCAL_TOOL_FIRE_FORGET_KEY]: emit }));
+      const result = await (tool as any).func({ query: "ping" }, undefined, makeConfig({ [EMIT_LOCAL_TOOL_KEY]: emit }));
 
-      expect(emit).toHaveBeenCalledWith({ tool_name: "ff_tool", args_json: { q: "ping" } });
+      expect(emit).toHaveBeenCalledWith({ tool_name: "ff_tool", args_json: { q: "ping" }, toolType: "fire_and_forget" });
       expect(typeof result).toBe("string");
     });
 
@@ -163,26 +162,23 @@ describe("createLocalTool", () => {
         mode: "fire_and_forget",
         fireAndForgetPlaceholder: "Done.",
       });
-      const result = await (tool as any).func({ query: "x" }, undefined, makeConfig({ [EMIT_LOCAL_TOOL_FIRE_FORGET_KEY]: emit }));
+      const result = await (tool as any).func({ query: "x" }, undefined, makeConfig({ [EMIT_LOCAL_TOOL_KEY]: emit }));
       expect(result).toBe("Done.");
     });
 
-    it("returns placeholder without throwing when EMIT_LOCAL_TOOL_FIRE_FORGET_KEY is missing", async () => {
+    it("returns placeholder without throwing when EMIT_LOCAL_TOOL_KEY is missing (fire_and_forget)", async () => {
       const tool = createLocalTool({ tool_name: "ff_tool", schema, buildRequest, description: "d", mode: "fire_and_forget" });
       const result = await (tool as any).func({ query: "x" }, undefined, makeConfig());
       expect(typeof result).toBe("string");
     });
 
-    it("does NOT call the tracked emit callback in fire_and_forget mode", async () => {
-      const trackedEmit = vi.fn();
-      const ffEmit = vi.fn();
+    it("passes toolType: tracked for tracked calls and fire_and_forget for ff calls", async () => {
+      const emit = vi.fn().mockReturnValue(null);
       const tool = createLocalTool({ tool_name: "ff_tool", schema, buildRequest, description: "d", mode: "fire_and_forget" });
       await (tool as any).func({ query: "x" }, undefined, makeConfig({
-        [EMIT_LOCAL_TOOL_KEY]: trackedEmit,
-        [EMIT_LOCAL_TOOL_FIRE_FORGET_KEY]: ffEmit,
+        [EMIT_LOCAL_TOOL_KEY]: emit,
       }));
-      expect(trackedEmit).not.toHaveBeenCalled();
-      expect(ffEmit).toHaveBeenCalled();
+      expect(emit).toHaveBeenCalledWith(expect.objectContaining({ toolType: "fire_and_forget" }));
     });
   });
 });

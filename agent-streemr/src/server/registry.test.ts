@@ -99,6 +99,21 @@ describe("LocalToolRegistry", () => {
     expect(result).toBeNull();
   });
 
+  it("handleResponse returns async kind when no sync awaiter is registered", () => {
+    registry.trackEmit({ threadId: THREAD, request_id: REQID, tool_name: TOOL, nowMs: NOW, ttlMs: TTL });
+
+    const result = registry.handleResponse({
+      ctx: {},
+      threadId: THREAD,
+      request_id: REQID,
+      tool_name: TOOL,
+      status: "success",
+      responseJson: { ok: true },
+    });
+
+    expect(result).toEqual(["async", { remainingCount: 0 }]);
+  });
+
   // -------------------------------------------------------------------------
   // clearExpired
   // -------------------------------------------------------------------------
@@ -132,10 +147,18 @@ describe("LocalToolRegistry", () => {
     const promise = registry.awaitResponse({ threadId: THREAD, request_id: REQID, tool_name: TOOL, ttlMs: 1_000 });
 
     // Simulate response arriving
-    registry.handleResponse({ ctx: {}, threadId: THREAD, request_id: REQID, tool_name: TOOL, status: "success", responseJson: { y: 2 } });
+    const handleOutcome = registry.handleResponse({
+      ctx: {},
+      threadId: THREAD,
+      request_id: REQID,
+      tool_name: TOOL,
+      status: "success",
+      responseJson: { y: 2 },
+    });
 
     const result = await promise;
     expect(result).toEqual({ status: "success", responseJson: { y: 2 } });
+    expect(handleOutcome).toEqual(["sync", { remainingCount: 0 }]);
   });
 
   it("awaitResponse resolves with early result when handleResponse was called first", async () => {

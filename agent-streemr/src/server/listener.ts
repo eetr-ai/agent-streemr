@@ -59,27 +59,23 @@ export type AuthResult = {
   [key: string]: unknown;
 };
 
+/** Local tool emission mode. */
+export type LocalToolEmitType = "tracked" | "fire_and_forget";
+
 /**
- * Callback injected into the agent runner to emit a tracked `local_tool` request
- * to the client (async and sync modes).
+ * Unified local tool emitter injected into the agent runner.
  *
- * @returns The server-generated `request_id` for this request. In sync mode,
- *          pass this to `LocalToolRegistry.awaitResponse()`.
+ * - `"tracked"` (async / sync modes) — registers the request in the registry
+ *   and returns the server-generated `request_id`. In sync mode pass this to
+ *   `LocalToolRegistry.awaitResponse()`.
+ * - `"fire_and_forget"` — emits without registry tracking; returns `null`
+ *   (callers should ignore the return value).
  */
 export type EmitLocalToolFn = (payload: {
   tool_name: string;
   args_json: object;
-}) => string;
-
-/**
- * Callback injected into the agent runner to emit an **untracked** `local_tool`
- * request (fire-and-forget mode). No `local_tool_response` is expected; the
- * client does not need to reply.
- */
-export type EmitLocalToolFireAndForgetFn = (payload: {
-  tool_name: string;
-  args_json: object;
-}) => void;
+  toolType: LocalToolEmitType;
+}) => string | null;
 
 /**
  * An async generator factory that the consumer implements. Called once per
@@ -89,8 +85,8 @@ export type EmitLocalToolFireAndForgetFn = (payload: {
  * - `threadId` — for history keying and room broadcasting.
  * - `topicName` / `currentTopicName` — for dynamic system prompt injection.
  * - `context` — the current per-thread context (application-defined `TContext`).
- * - `emitLocalTool` — tracked emit for async/sync local tools.
- * - `emitLocalToolFireAndForget` — untracked emit for fire-and-forget local tools.
+ * - `emitLocalTool` — unified emitter; pass `toolType: "tracked"` for async/sync tools
+ *   or `toolType: "fire_and_forget"` for untracked tools. Returns `request_id | null`.
  * - `localToolRegistry` — the `LocalToolRegistry` instance; inject into
  *   `config.configurable` (via `SYNC_REGISTRY_KEY`) for sync-mode tools.
  */
@@ -102,7 +98,6 @@ export type AgentRunner<TContext> = (
     currentTopicName?: string;
     context?: TContext;
     emitLocalTool: EmitLocalToolFn;
-    emitLocalToolFireAndForget: EmitLocalToolFireAndForgetFn;
     localToolRegistry: LocalToolRegistry<TContext>;
   }
 ) => AsyncIterable<AgentStreamEvent>;
@@ -242,6 +237,8 @@ export function createAgentSocketListener<TContext>(
   const contextStore = new Map<string, TContext>();
   /** Last emitted topic name per thread, for follow-up turns. */
   const lastTopicByThread = new Map<string, string>();
+  /** Fire-and-forget request IDs emitted per thread (used to classify stray responses). */
+  const fireAndForgetByThread = new Map<string, Map<string, number>>();
 
   const defaultOnError = (err: unknown, socket: Socket) => {
     socket.emit("error", { message: String(err) });
@@ -258,27 +255,47 @@ export function createAgentSocketListener<TContext>(
   }
 
   function makeEmitLocalTool(socket: Socket, threadId: string): EmitLocalToolFn {
-    return (payload) => {
+    return ({ tool_name, args_json, toolType }) => {
       const nowMs = Date.now();
-      localToolRegistry.clearExpired(threadId, nowMs);
       const request_id = randomUUID();
-      localToolRegistry.trackEmit({
-        threadId,
-        request_id,
-        tool_name: payload.tool_name,
-        nowMs,
-        ttlMs: localToolTtlMs,
-      });
-      socket.emit("local_tool", { ...payload, request_id });
-      return request_id;
+
+      if (toolType === "tracked") {
+        localToolRegistry.clearExpired(threadId, nowMs);
+        localToolRegistry.trackEmit({ threadId, request_id, tool_name, nowMs, ttlMs: localToolTtlMs });
+      } else {
+        rememberFireAndForget(threadId, request_id, nowMs);
+      }
+
+      socket.emit("local_tool", { tool_name, args_json, request_id });
+      return toolType === "tracked" ? request_id : null;
     };
   }
 
-  function makeEmitFireAndForget(socket: Socket): EmitLocalToolFireAndForgetFn {
-    return (payload) => {
-      const request_id = randomUUID();
-      socket.emit("local_tool", { ...payload, request_id });
-    };
+  function rememberFireAndForget(threadId: string, requestId: string, nowMs: number): void {
+    let threadMap = fireAndForgetByThread.get(threadId);
+    if (!threadMap) {
+      threadMap = new Map();
+      fireAndForgetByThread.set(threadId, threadMap);
+    }
+
+    for (const [rid, expiresAtMs] of threadMap.entries()) {
+      if (expiresAtMs <= nowMs) threadMap.delete(rid);
+    }
+
+    threadMap.set(requestId, nowMs + localToolTtlMs);
+  }
+
+  function consumeKnownFireAndForget(threadId: string, requestId: string, nowMs: number): boolean {
+    const threadMap = fireAndForgetByThread.get(threadId);
+    if (!threadMap) return false;
+
+    for (const [rid, expiresAtMs] of threadMap.entries()) {
+      if (expiresAtMs <= nowMs) threadMap.delete(rid);
+    }
+
+    const known = threadMap.delete(requestId);
+    if (threadMap.size === 0) fireAndForgetByThread.delete(threadId);
+    return known;
   }
 
   function enqueueRun(
@@ -296,7 +313,6 @@ export function createAgentSocketListener<TContext>(
         currentTopicName: opts.currentTopicName,
         context,
         emitLocalTool: makeEmitLocalTool(socket, threadId),
-        emitLocalToolFireAndForget: makeEmitFireAndForget(socket),
         localToolRegistry,
       });
 
@@ -392,6 +408,9 @@ export function createAgentSocketListener<TContext>(
       });
 
       if (result === null) {
+        if (consumeKnownFireAndForget(threadId, requestId, nowMs)) {
+          return;
+        }
         console.log("[agent-streemr] local_tool_response for unknown/expired request_id — ignored", {
           threadId,
           requestId,
@@ -400,7 +419,11 @@ export function createAgentSocketListener<TContext>(
         return;
       }
 
-      const { remainingCount } = result;
+      const [toolKind, { remainingCount }] = result;
+      if (toolKind === "sync") {
+        return;
+      }
+
       const topicName = lastTopicByThread.get(threadId);
       const followUp = buildFollowUpMessage({
         toolName,
@@ -430,6 +453,7 @@ export function createAgentSocketListener<TContext>(
       queue.enqueue(threadId, async () => {
         contextStore.delete(threadId);
         lastTopicByThread.delete(threadId);
+        fireAndForgetByThread.delete(threadId);
         localToolRegistry.clearThread(threadId);
         queue.clear(threadId);
 

@@ -66,7 +66,9 @@ export { ThreadQueue } from "./server/queue";
 export type {
   LocalToolResponseProcessor,
   TrackEmitResult,
+  HandledToolKind,
   HandleResponseResult,
+  HandleResponseOutcome,
 } from "./server/registry";
 export { LocalToolRegistry } from "./server/registry";
 
@@ -80,8 +82,8 @@ export { AgentStreamAdapter } from "./server/adapter";
 // ---------------------------------------------------------------------------
 export type {
   AuthResult,
+  LocalToolEmitType,
   EmitLocalToolFn,
-  EmitLocalToolFireAndForgetFn,
   AgentRunner,
   CreateAgentSocketListenerOptions,
 } from "./server/listener";
@@ -97,6 +99,5 @@ export type {
 export {
   createLocalTool,
   EMIT_LOCAL_TOOL_KEY,
-  EMIT_LOCAL_TOOL_FIRE_FORGET_KEY,
   SYNC_REGISTRY_KEY,
 } from "./langchain/localTool";

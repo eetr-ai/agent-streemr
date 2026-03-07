@@ -17,8 +17,7 @@
  *
  * | Key constant                       | Type                         | Required for        |
  * |------------------------------------|------------------------------|---------------------|
- * | `EMIT_LOCAL_TOOL_KEY`              | `EmitLocalToolFn`            | `async`, `sync`     |
- * | `EMIT_LOCAL_TOOL_FIRE_FORGET_KEY`  | `EmitFireAndForgetFn`        | `fire_and_forget`   |
+ * | `EMIT_LOCAL_TOOL_KEY`              | `EmitLocalToolFn`            | all modes           |
  * | `SYNC_REGISTRY_KEY`                | `SyncAwaitable`              | `sync`              |
  *
  * In `createAgentSocketListener`, these are injected automatically.
@@ -29,7 +28,6 @@
  *   configurable: {
  *     thread_id: threadId,
  *     [EMIT_LOCAL_TOOL_KEY]: emitLocalTool,
- *     [EMIT_LOCAL_TOOL_FIRE_FORGET_KEY]: emitLocalToolFireAndForget,
  *     [SYNC_REGISTRY_KEY]: localToolRegistry,
  *   },
  * };
@@ -78,18 +76,11 @@ import type { ZodSchema } from "zod";
 // ---------------------------------------------------------------------------
 
 /**
- * Key in `RunnableConfig.configurable` for the tracked `local_tool` emitter.
- * Value type: `EmitLocalToolFn` (returns `request_id`).
- * Required for `async` and `sync` modes.
+ * Key in `RunnableConfig.configurable` for the unified `local_tool` emitter.
+ * Value type: `EmitLocalToolFn` (returns `string` for tracked, `null` for fire-and-forget).
+ * Required for all modes.
  */
 export const EMIT_LOCAL_TOOL_KEY = "__emitLocalTool" as const;
-
-/**
- * Key in `RunnableConfig.configurable` for the **fire-and-forget** `local_tool` emitter.
- * Value type: `EmitFireAndForgetFn` (returns `void`).
- * Required for `fire_and_forget` mode.
- */
-export const EMIT_LOCAL_TOOL_FIRE_FORGET_KEY = "__emitLocalToolFireAndForget" as const;
 
 /**
  * Key in `RunnableConfig.configurable` for the `LocalToolRegistry` instance.
@@ -121,10 +112,12 @@ interface SyncAwaitable {
 // Callback type aliases (must match the listener's function signatures)
 // ---------------------------------------------------------------------------
 
-/** Tracked `local_tool` emitter — returns the `request_id`. */
-type EmitLocalToolFn = (payload: { tool_name: string; args_json: object }) => string;
-/** Untracked `local_tool` emitter — no response expected. */
-type EmitFireAndForgetFn = (payload: { tool_name: string; args_json: object }) => void;
+/** Unified `local_tool` emitter — returns `request_id` for tracked, `null` for fire-and-forget. */
+type EmitLocalToolFn = (payload: {
+  tool_name: string;
+  args_json: object;
+  toolType: "tracked" | "fire_and_forget";
+}) => string | null;
 
 // ---------------------------------------------------------------------------
 // Tool factory
@@ -155,10 +148,9 @@ export type CreateLocalToolOptions<TArgs, TRequest extends object> = {
    * - `"async"` — emit request, return placeholder immediately; the listener
    *   processes the `local_tool_response` and re-enqueues a follow-up turn.
    * - `"sync"` — emit request, then `await` the client response before returning
-   *   to LangChain. Requires `SYNC_REGISTRY_KEY` and `EMIT_LOCAL_TOOL_KEY` in
-   *   `config.configurable`. Timeout resolves as `{ status: "error" }`.
-   * - `"fire_and_forget"` — emit request with no response tracking. Requires
-   *   `EMIT_LOCAL_TOOL_FIRE_FORGET_KEY` in `config.configurable`.
+   *   to LangChain. Requires `SYNC_REGISTRY_KEY` in `config.configurable`.
+   *   Timeout resolves as `{ status: "error" }`.
+   * - `"fire_and_forget"` — emit request with no response tracking.
    */
   mode?: LocalToolMode;
   /**
@@ -223,7 +215,7 @@ export function createLocalTool<TArgs, TRequest extends object>(
             );
             return asyncPlaceholder;
           }
-          emit({ tool_name: name, args_json: argsJson });
+          emit({ tool_name: name, args_json: argsJson, toolType: "tracked" });
           return asyncPlaceholder;
         }
 
@@ -244,22 +236,22 @@ export function createLocalTool<TArgs, TRequest extends object>(
             return JSON.stringify({ status: "error", errorMessage: "threadId not available" });
           }
 
-          const request_id = emit({ tool_name: name, args_json: argsJson });
+          const request_id = emit({ tool_name: name, args_json: argsJson, toolType: "tracked" }) as string;
           const result = await registry.awaitResponse({ threadId, request_id, tool_name: name, ttlMs });
           return JSON.stringify(result);
         }
 
         // -------------------------------------------------------------------
         case "fire_and_forget": {
-          const emit = configurable[EMIT_LOCAL_TOOL_FIRE_FORGET_KEY] as EmitFireAndForgetFn | undefined;
+          const emit = configurable[EMIT_LOCAL_TOOL_KEY] as EmitLocalToolFn | undefined;
           if (typeof emit !== "function") {
             console.warn(
-              `[agent-streemr] createLocalTool "${name}" (fire_and_forget): EMIT_LOCAL_TOOL_FIRE_FORGET_KEY ` +
+              `[agent-streemr] createLocalTool "${name}" (fire_and_forget): EMIT_LOCAL_TOOL_KEY ` +
               "not found in config.configurable. Ensure the tool is used inside a createAgentSocketListener runner."
             );
             return fireAndForgetPlaceholder;
           }
-          emit({ tool_name: name, args_json: argsJson });
+          emit({ tool_name: name, args_json: argsJson, toolType: "fire_and_forget" });
           return fireAndForgetPlaceholder;
         }
 
