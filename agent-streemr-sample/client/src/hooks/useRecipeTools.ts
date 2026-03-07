@@ -144,6 +144,8 @@ export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: Use
       updatedAt: now,
     };
     draftsRef.current.set(id, draft);
+    await saveRecipe(draft);
+    onLoadRecipeRef.current?.(id);
     return { response_json: { id, name } };
   }, { allowList });
 
@@ -151,7 +153,10 @@ export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: Use
   useLocalToolHandler(socket, "recipe_set_title", async (args) => {
     const { id, name } = args as { id: string; name: string };
     const existing = draftsRef.current.get(id) ?? {};
-    draftsRef.current.set(id, { ...existing, id, name });
+    const updated = { ...existing, id, name };
+    draftsRef.current.set(id, updated);
+    const stored = await getRecipe(id);
+    if (stored) await saveRecipe({ ...stored, ...updated });
     return { response_json: { ok: true, id, name } };
   }, { allowList });
 
@@ -159,7 +164,10 @@ export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: Use
   useLocalToolHandler(socket, "recipe_set_description", async (args) => {
     const { id, description } = args as { id: string; description: string };
     const existing = draftsRef.current.get(id) ?? {};
-    draftsRef.current.set(id, { ...existing, id, description });
+    const updated = { ...existing, id, description };
+    draftsRef.current.set(id, updated);
+    const stored = await getRecipe(id);
+    if (stored) await saveRecipe({ ...stored, ...updated });
     return { response_json: { ok: true, id } };
   }, { allowList });
 
@@ -218,6 +226,7 @@ export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: Use
     }
 
     draftsRef.current.set(id, { ...existing, id, ingredients: next });
+    if (stored) await saveRecipe({ ...stored, ...draftsRef.current.get(id) });
     return { response_json: { ok: true, id, count: next.length } };
   }, { allowList });
 
@@ -293,6 +302,7 @@ export function useRecipeTools(socket: AgentSocket | null, { onLoadRecipe }: Use
     }
 
     draftsRef.current.set(id, { ...existing, id, instructions: nextMd });
+    if (stored) await saveRecipe({ ...stored, ...draftsRef.current.get(id) });
     return { response_json: { ok: true, id, steps: parseSteps(nextMd).length } };
   }, { allowList });
 
