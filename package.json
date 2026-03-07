@@ -6,7 +6,9 @@
   "workspaces": [
     "agent-streemr",
     "agent-streemr-react",
-    "agent-streemr-sample"
+    "agent-streemr-sample",
+    "sample-agent",
+    "sample-client"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
@@ -14,10 +16,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "npm run lint --workspaces --if-present",
-    "clean": "npm run clean --workspaces --if-present && rm -rf node_modules"
+    "clean": "npm run clean --workspaces --if-present && rm -rf node_modules",
+    "dev:agent": "npm run dev -w sample-agent",
+    "dev:client": "npm run dev -w sample-client",
+    "dev:sample": "concurrently -n agent,client -c cyan,magenta \"npm run dev:agent\" \"npm run dev:client\"",
+    "build:sample": "npm run build -w agent-streemr && npm run build -w agent-streemr-react && npm run build -w sample-agent && npm run build -w sample-client"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "concurrently": "^9.0.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   },

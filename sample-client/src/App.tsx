@@ -1,0 +1,74 @@
+import { useEffect } from "react";
+import { AgentStreamProvider, useAgentStreamContext } from "@eetr/agent-streemr-react";
+import ChatView from "./components/ChatView";
+import ThinkingPanel from "./components/ThinkingPanel";
+import ToolCallLog from "./components/ToolCallLog";
+
+// ---------------------------------------------------------------------------
+// Thread ID — persisted in localStorage so page refreshes keep conversation
+// ---------------------------------------------------------------------------
+function getOrCreateThreadId(): string {
+  try {
+    const stored = localStorage.getItem("agent_streemr_thread_id");
+    if (stored) return stored;
+    const id = crypto.randomUUID();
+    localStorage.setItem("agent_streemr_thread_id", id);
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+const THREAD_ID = getOrCreateThreadId();
+
+// Agent URL — set VITE_AGENT_URL in .env (defaults to localhost in dev with Vite proxy)
+const AGENT_URL =
+  (import.meta.env.VITE_AGENT_URL as string | undefined) ?? "http://localhost:5173";
+
+// ---------------------------------------------------------------------------
+// Inner app — needs to be inside AgentStreamProvider to call the context hook
+// ---------------------------------------------------------------------------
+function InnerApp() {
+  const { connect } = useAgentStreamContext();
+
+  // Connect once on mount
+  useEffect(() => {
+    connect(THREAD_ID);
+  }, [connect]);
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100">
+      {/* Main chat column */}
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Header */}
+        <header className="flex items-center gap-3 px-5 py-3 bg-slate-800 border-b border-slate-700 shrink-0">
+          <span className="text-xl font-semibold tracking-tight">Agent Streemr</span>
+          <span className="text-xs text-slate-400 font-mono bg-slate-700 px-2 py-0.5 rounded">
+            sample
+          </span>
+        </header>
+
+        {/* Chat + thinking */}
+        <div className="flex flex-1 min-h-0">
+          <ChatView />
+          <ThinkingPanel />
+        </div>
+      </div>
+
+      {/* Right sidebar — tool call log */}
+      <ToolCallLog />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Root export — wraps with provider
+// ---------------------------------------------------------------------------
+export default function App() {
+  return (
+    // token is empty string — the sample agent does not validate tokens
+    <AgentStreamProvider url={AGENT_URL} token="">
+      <InnerApp />
+    </AgentStreamProvider>
+  );
+}

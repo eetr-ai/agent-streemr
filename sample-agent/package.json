@@ -1,7 +1,7 @@
 {
-  "name": "@eetr/agent-streemr-sample",
+  "name": "@eetr/agent-streemr-sample-agent",
   "version": "0.1.0",
-  "description": "Reference implementation using @eetr/agent-streemr — a minimal Socket.io + LangChain agent server.",
+  "description": "Sample agent server using @eetr/agent-streemr — a blank ChatOpenAI agent with Socket.io transport.",
   "author": "Juan Alberto Lopez Cavallotti",
   "license": "Apache-2.0",
   "private": true,
@@ -9,21 +9,23 @@
   "scripts": {
     "dev": "tsx --watch src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
     "@eetr/agent-streemr": "*",
-    "@eetr/agent-streemr-react": "*",
-    "@langchain/core": "^1.1.30",
-    "@langchain/langgraph": "^1.2.0",
-    "@langchain/openai": "^1.2.12",
+    "@langchain/core": "^0.3.0",
+    "@langchain/langgraph": "^0.2.0",
+    "@langchain/openai": "^0.3.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
     "express": "^4.21.0",
     "socket.io": "^4.8.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
