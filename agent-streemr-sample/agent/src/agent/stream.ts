@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createAgent } from "langchain";
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI, tools as openAITools } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
-import { HumanMessage, AIMessageChunk } from "@langchain/core/messages";
 import type { AgentRunner, AgentStreamEvent } from "@eetr/agent-streemr";
 import { SYSTEM_PROMPT } from "./prompt.js";
 
@@ -13,18 +12,23 @@ import { SYSTEM_PROMPT } from "./prompt.js";
 // ---------------------------------------------------------------------------
 
 const model = new ChatOpenAI({
-  model: "gpt-4.1-mini",
-  temperature: 0,
+  model: "gpt-5.2",
   streaming: true,
 });
 
 const checkpointer = new MemorySaver();
 
-// Blank agent — no tools. LangGraph MemorySaver keeps conversation history
-// per threadId via the configurable.thread_id key.
+// Web search restricted to AllRecipes so the agent can look up recipe
+// templates and ingredient combinations from a trusted culinary source.
+const webSearch = openAITools.webSearch({
+  filters: {
+    allowedDomains: ["allrecipes.com"],
+  },
+});
+
 const agent = createAgent({
   model,
-  tools: [],
+  tools: [webSearch],
   checkpointer,
   systemPrompt: SYSTEM_PROMPT,
 });
@@ -34,23 +38,41 @@ const agent = createAgent({
 // ---------------------------------------------------------------------------
 
 export const streamAgentResponse: AgentRunner<object> = async function* (message, { threadId }) {
-  const eventStream = agent.streamEvents(
-    { messages: [new HumanMessage(message)] },
+  console.log(`[stream] thread=${threadId} message="${message.slice(0, 80)}${message.length > 80 ? "..." : ""}"`)
+
+  const tokenStream = await agent.stream(
+    { messages: [{ role: "user", content: message }] },
     {
-      version: "v2",
+      streamMode: "messages",
       configurable: { thread_id: threadId },
     },
   );
 
-  for await (const event of eventStream) {
-    if (event.event === "on_chat_model_stream") {
-      const chunk = event.data?.chunk as AIMessageChunk | undefined;
-      const content = chunk?.content;
-      if (typeof content === "string" && content) {
-        yield { type: "agent_response", chunk: content, done: false } satisfies AgentStreamEvent;
+  let tokenCount = 0;
+  for await (const [token, metadata] of tokenStream) {
+    // Only emit tokens from the model request node
+    if (metadata.langgraph_node !== "model_request") continue;
+
+    let text = "";
+
+    // New API: normalized content blocks
+    if (Array.isArray(token.contentBlocks) && token.contentBlocks.length > 0) {
+      for (const block of token.contentBlocks) {
+        if (block.type === "text" && block.text) text += block.text;
       }
+    // Fallback: plain string content
+    } else if (typeof token.content === "string" && token.content) {
+      text = token.content;
+    }
+
+    if (text) {
+      tokenCount++;
+      console.log(`[stream] token #${tokenCount}: "${text.replace(/\n/g, "\\n")}"`);
+      yield { type: "agent_response", chunk: text, done: false } satisfies AgentStreamEvent;
     }
   }
+
+  console.log(`[stream] done — ${tokenCount} token(s) emitted for thread=${threadId}`);
 
   yield { type: "agent_response", done: true } satisfies AgentStreamEvent;
 };

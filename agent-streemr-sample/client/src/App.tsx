@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AgentStreamProvider, useAgentStreamContext } from "@eetr/agent-streemr-react";
 import ThinkingPanel from "./components/ThinkingPanel";
 import ToolCallLog from "./components/ToolCallLog";
@@ -29,12 +29,37 @@ const AGENT_URL =
 // Inner app — needs to be inside AgentStreamProvider to call the context hook
 // ---------------------------------------------------------------------------
 function InnerApp() {
-  const { connect } = useAgentStreamContext();
+  const { connect, status, messages, isStreaming } = useAgentStreamContext();
+  const prevMsgCountRef = useRef(0);
 
   // Connect once on mount
   useEffect(() => {
     connect(THREAD_ID);
   }, [connect]);
+
+  // Log connection status changes
+  useEffect(() => {
+    console.log(`[agent-streemr] status →`, status);
+  }, [status]);
+
+  // Log each new/updated message
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (messages.length > prevMsgCountRef.current) {
+      prevMsgCountRef.current = messages.length;
+      console.log(`[agent-streemr] new message (${last.role}, streaming=${last.streaming}):`, JSON.stringify(last.content.slice(0, 120)));
+    } else if (last.streaming) {
+      console.log(`[agent-streemr] chunk received — content so far: ${last.content.length} chars`);
+    } else {
+      console.log(`[agent-streemr] message finalised (${last.role}), length=${last.content.length}`);
+    }
+  }, [messages]);
+
+  // Log streaming state changes
+  useEffect(() => {
+    console.log(`[agent-streemr] isStreaming →`, isStreaming);
+  }, [isStreaming]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100">
