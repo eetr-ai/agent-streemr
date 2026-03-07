@@ -13,5 +13,5 @@ export const recipeSetTitle = createLocalTool({
     name: z.string().describe("The new title."),
   }),
   buildRequest: (args) => ({ id: args.id, name: args.name }),
-  mode: "sync",
+  mode: "fire_and_forget",
 });

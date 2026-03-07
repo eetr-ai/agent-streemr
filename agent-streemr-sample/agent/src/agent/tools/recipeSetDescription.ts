@@ -13,5 +13,5 @@ export const recipeSetDescription = createLocalTool({
     description: z.string().describe("The new description text."),
   }),
   buildRequest: (args) => ({ id: args.id, description: args.description }),
-  mode: "sync",
+  mode: "fire_and_forget",
 });

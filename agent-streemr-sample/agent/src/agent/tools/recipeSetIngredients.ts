@@ -63,5 +63,5 @@ export const recipeSetIngredients = createLocalTool({
     item: args.item,
     value: args.value,
   }),
-  mode: "sync",
+  mode: "fire_and_forget",
 });

@@ -17,5 +17,5 @@ export const recipeSave = createLocalTool({
     id: z.string().describe("The id of the recipe to save."),
   }),
   buildRequest: (args) => ({ id: args.id }),
-  mode: "sync",
+  mode: "fire_and_forget",
 });

@@ -18,5 +18,5 @@ export const recipeGetState = createLocalTool({
     id: z.string().describe("The id of the recipe to read."),
   }),
   buildRequest: (args) => ({ id: args.id }),
-  mode: "sync",
+  mode: "async",
 });

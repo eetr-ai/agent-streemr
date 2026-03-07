@@ -18,5 +18,5 @@ export const recipeLoad = createLocalTool({
     id: z.string().describe("The id of the recipe to load into the editor panel."),
   }),
   buildRequest: (args) => ({ id: args.id }),
-  mode: "sync",
+  mode: "fire_and_forget",
 });

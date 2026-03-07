@@ -51,5 +51,5 @@ export const recipeSetDirections = createLocalTool({
     step: args.step,
     index: args.index,
   }),
-  mode: "sync",
+  mode: "fire_and_forget",
 });

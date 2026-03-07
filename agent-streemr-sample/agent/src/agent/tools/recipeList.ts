@@ -15,5 +15,5 @@ export const recipeList = createLocalTool({
     "Returns an array of recipe summaries: id, name, tags, servings.",
   schema: z.object({}),
   buildRequest: () => ({}),
-  mode: "sync",
+  mode: "async",
 });
