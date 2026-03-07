@@ -30,6 +30,7 @@ export type {
   ClientHelloPayload,
   InternalTokenPayload,
   LocalToolPayload,
+  LocalToolResponseAckPayload,
   AgentResponsePayload,
   ContextClearedPayload,
   ErrorPayload,

@@ -52,7 +52,7 @@ describe("createLocalTool", () => {
       const tool = createLocalTool({ tool_name: "my_tool", schema, buildRequest, description: "d" });
       const result = await (tool as any).func({ query: "hello" }, undefined, makeConfig({ [EMIT_LOCAL_TOOL_KEY]: emit }));
 
-      expect(emit).toHaveBeenCalledWith({ tool_name: "my_tool", args_json: { q: "hello" }, toolType: "tracked" });
+      expect(emit).toHaveBeenCalledWith({ tool_name: "my_tool", args_json: { q: "hello" }, toolType: "async" });
       expect(typeof result).toBe("string");
       expect(result.length).toBeGreaterThan(0);
     });
@@ -94,7 +94,7 @@ describe("createLocalTool", () => {
         [SYNC_REGISTRY_KEY]: registry,
       }));
 
-      expect(emit).toHaveBeenCalledWith({ tool_name: "sync_tool", args_json: { q: "test" }, toolType: "tracked" });
+      expect(emit).toHaveBeenCalledWith({ tool_name: "sync_tool", args_json: { q: "test" }, toolType: "sync" });
       expect(registry.awaitResponse).toHaveBeenCalledWith({
         threadId: "thread-1",
         request_id: "req-sync",

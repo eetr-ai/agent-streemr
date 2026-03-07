@@ -15,6 +15,7 @@ export type {
   ProtocolVersion,
   MessagePayload,
   LocalToolPayload,
+  LocalToolResponseAckPayload,
   LocalToolResponsePayload,
   AgentResponsePayload,
   InternalTokenPayload,

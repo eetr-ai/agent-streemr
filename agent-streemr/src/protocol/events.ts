@@ -128,7 +128,8 @@ export type InternalTokenPayload = {
 
 /**
  * Delegate a tool execution to the client.
- * The client must reply with `local_tool_response` echoing the `request_id`.
+ * The client must reply with `local_tool_response` echoing the `request_id`
+ * unless `tool_type` is `"fire_and_forget"`.
  *
  * Event name: `local_tool`
  */
@@ -139,6 +140,39 @@ export type LocalToolPayload = {
   tool_name: string;
   /** Tool arguments as a serialisable object. */
   args_json: object;
+  /**
+   * Execution mode of this tool on the server.
+   *
+   * - `"sync"` — the server is blocking, awaiting the client reply before
+   *   returning a result to the LLM. Reply as fast as possible.
+   * - `"async"` — the server is not blocking; it will resume the conversation
+   *   when the `local_tool_response` arrives.
+   * - `"fire_and_forget"` — no reply is expected or required; the client
+   *   should execute the tool for side effects only and **not** emit
+   *   `local_tool_response`.
+   */
+  tool_type: "sync" | "async" | "fire_and_forget";
+  /**
+   * Unix epoch milliseconds when the server will give up waiting for a
+   * response. Present for `"sync"` and `"async"` tools; absent for
+   * `"fire_and_forget"`. The client must not send `local_tool_response`
+   * after this timestamp.
+   */
+  expires_at?: number;
+};
+
+/**
+ * Sent by the server to confirm that a `local_tool_response` was received
+ * and processed successfully. The client can use this to cancel any pending
+ * retry timer it set up for the corresponding `request_id`.
+ *
+ * Event name: `local_tool_response_ack`
+ */
+export type LocalToolResponseAckPayload = {
+  /** Echoes the `request_id` from the originating `LocalToolPayload`. */
+  request_id: string;
+  /** Echoes the `tool_name` from the originating `LocalToolPayload`. */
+  tool_name: string;
 };
 
 /**
@@ -255,6 +289,8 @@ export interface ServerToClientEvents {
   agent_working: (payload: AgentWorkingPayload) => void;
   internal_token: (payload: InternalTokenPayload) => void;
   local_tool: (payload: LocalToolPayload) => void;
+  /** Acknowledges a received and processed `local_tool_response`. The client can use this to cancel retry timers. */
+  local_tool_response_ack: (payload: LocalToolResponseAckPayload) => void;
   agent_response: (payload: AgentResponsePayload) => void;
   context_cleared: (payload: ContextClearedPayload) => void;
   error: (payload: ErrorPayload) => void;

@@ -143,7 +143,7 @@ interface SyncAwaitable {
 type EmitLocalToolFn = (payload: {
   tool_name: string;
   args_json: object;
-  toolType: "tracked" | "fire_and_forget";
+  toolType: "sync" | "async" | "fire_and_forget";
 }) => string | null;
 
 // ---------------------------------------------------------------------------
@@ -291,7 +291,7 @@ export function createLocalTool<TArgs, TRequest extends object>(
             );
             return asyncPlaceholder;
           }
-          emit({ tool_name: name, args_json: argsJson, toolType: "tracked" });
+          emit({ tool_name: name, args_json: argsJson, toolType: mode });
           return asyncPlaceholder;
         }
 
@@ -312,7 +312,7 @@ export function createLocalTool<TArgs, TRequest extends object>(
             return JSON.stringify({ status: "error", errorMessage: "threadId not available" });
           }
 
-          const request_id = emit({ tool_name: name, args_json: argsJson, toolType: "tracked" }) as string;
+          const request_id = emit({ tool_name: name, args_json: argsJson, toolType: mode }) as string;
           const result = await registry.awaitResponse({ threadId, request_id, tool_name: name, ttlMs });
           return JSON.stringify(result);
         }

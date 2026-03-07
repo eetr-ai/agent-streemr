@@ -70,14 +70,21 @@ export type AuthResult = {
   [key: string]: unknown;
 };
 
-/** Local tool emission mode. */
-export type LocalToolEmitType = "tracked" | "fire_and_forget";
+/**
+ * Local tool emission mode, forwarded verbatim as `tool_type` in the
+ * `local_tool` socket event so the client knows whether a reply is required.
+ *
+ * - `"sync"` — server is blocking until the client responds (or TTL fires).
+ * - `"async"` — server is not blocking; expects a `local_tool_response` later.
+ * - `"fire_and_forget"` — no response expected; client executes for side-effects only.
+ */
+export type LocalToolEmitType = "sync" | "async" | "fire_and_forget";
 
 /**
  * Unified local tool emitter injected into the agent runner.
  *
- * - `"tracked"` (async / sync modes) — registers the request in the registry
- *   and returns the server-generated `request_id`. In sync mode pass this to
+ * - `"sync"` / `"async"` — registers the request in the registry and returns
+ *   the server-generated `request_id`. In sync mode pass this to
  *   `LocalToolRegistry.awaitResponse()`.
  * - `"fire_and_forget"` — emits without registry tracking; returns `null`
  *   (callers should ignore the return value).
@@ -284,15 +291,22 @@ export function createAgentSocketListener<TContext>(
       const nowMs = Date.now();
       const request_id = randomUUID();
 
-      if (toolType === "tracked") {
+      if (toolType === "sync" || toolType === "async") {
         localToolRegistry.clearExpired(threadId, nowMs);
-        localToolRegistry.trackEmit({ threadId, request_id, tool_name, nowMs, ttlMs: localToolTtlMs });
+        const tracked = localToolRegistry.trackEmit({ threadId, request_id, tool_name, nowMs, ttlMs: localToolTtlMs });
+        socket.emit("local_tool", {
+          tool_name,
+          args_json,
+          request_id,
+          tool_type: toolType,
+          expires_at: tracked?.expiresAtMs,
+        });
+        return request_id;
       } else {
         rememberFireAndForget(threadId, request_id, nowMs);
+        socket.emit("local_tool", { tool_name, args_json, request_id, tool_type: "fire_and_forget" });
+        return null;
       }
-
-      socket.emit("local_tool", { tool_name, args_json, request_id });
-      return toolType === "tracked" ? request_id : null;
     };
   }
 
@@ -491,6 +505,9 @@ export function createAgentSocketListener<TContext>(
         });
         return;
       }
+
+      // Acknowledge receipt so the client can cancel any pending retry timer.
+      socket.emit("local_tool_response_ack", { request_id: requestId, tool_name: toolName });
 
       const [toolKind, { remainingCount }] = result;
       if (toolKind === "sync") {

@@ -14,11 +14,19 @@ import type { Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
   LocalToolPayload,
+  LocalToolResponseAckPayload,
+  LocalToolResponsePayload,
   ServerToClientEvents,
 } from "@eetr/agent-streemr";
 import type { AllowList, LocalToolHandlerResult } from "./types";
 
 type AgentSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+/** Stores a pending response and its retry timer while waiting for an ack. */
+type PendingAck = {
+  timer: ReturnType<typeof setTimeout>;
+  responsePayload: LocalToolResponsePayload;
+};
 
 export type UseLocalToolHandlerOptions = {
   /**
@@ -30,25 +38,38 @@ export type UseLocalToolHandlerOptions = {
    * When omitted all matching tool requests are forwarded to the handler.
    */
   allowList?: AllowList;
+  /**
+   * When `true` (default), the hook automatically re-emits the last
+   * `local_tool_response` once if no `local_tool_response_ack` arrives from
+   * the server before the tool's `expires_at` window closes (minus a 1-second
+   * safety buffer).
+   *
+   * Only active for `"sync"` and `"async"` tools that carry an `expires_at`
+   * timestamp. Set to `false` to opt out of automatic retry.
+   */
+  retryOnNoAck?: boolean;
 };
 
 /**
  * Registers a handler for `local_tool` events matching `toolName`.
  *
- * The hook attaches a single `local_tool` listener on the socket. When a
- * `local_tool` event arrives:
+ * The hook attaches a `local_tool` listener and a `local_tool_response_ack`
+ * listener on the socket. When a `local_tool` event arrives:
  *
- * 1. If the `tool_name` doesn't match, do nothing (another hook handles it, or
- *    the auto-`notSupported` listener catches it after all handlers are checked).
- * 2. If an `allowList` is provided, `check()` is awaited. A `"denied"` or
+ * 1. If the `tool_name` doesn't match, do nothing.
+ * 2. If `tool_type === "fire_and_forget"`, invoke the handler for side effects
+ *    and return without emitting any response.
+ * 3. If `expires_at` is present and `Date.now() >= expires_at`, the server has
+ *    already given up — skip silently.
+ * 4. If an `allowList` is provided, `check()` is awaited. A `"denied"` or
  *    `"unknown"` decision emits `{ allowed: false }` and returns.
- * 3. Otherwise the `handler` is called with `args_json` and the result is
- *    emitted as `local_tool_response`.
- * 4. Handler errors are caught and emitted as `{ error: true, errorMessage }`.
+ * 5. The `handler` is called and the result is emitted as `local_tool_response`.
+ * 6. If `retryOnNoAck` is `true` (default) and `expires_at` is present, a
+ *    single retry is scheduled: if no `local_tool_response_ack` arrives before
+ *    `expires_at − 1 s`, the same response is re-emitted once.
  *
- * Multiple hooks for different `toolName` values can coexist on the same socket.
- * The auto-`notSupported` reply (for tools no handler claims) is managed via a
- * separate global listener registered inside this hook when the socket is live.
+ * On `local_tool_response_ack`: cancels the pending retry timer for that
+ * `request_id`.
  *
  * @example
  * ```tsx
@@ -77,6 +98,12 @@ export function useLocalToolHandler(
   const toolNameRef = useRef(toolName);
   toolNameRef.current = toolName;
 
+  const retryOnNoAckRef = useRef<boolean>(options.retryOnNoAck ?? true);
+  retryOnNoAckRef.current = options.retryOnNoAck ?? true;
+
+  // Map of pending acknowledgement timers keyed by request_id.
+  const pendingAcksRef = useRef<Map<string, PendingAck>>(new Map());
+
   useEffect(() => {
     if (!socket) return;
 
@@ -85,6 +112,21 @@ export function useLocalToolHandler(
       if (payload.tool_name !== toolNameRef.current) return;
 
       const { request_id, tool_name, args_json } = payload;
+
+      // Fire-and-forget: invoke the handler for side effects but never reply.
+      if (payload.tool_type === "fire_and_forget") {
+        try {
+          await handlerRef.current(args_json);
+        } catch {
+          // Errors are silently swallowed — there is no response channel.
+        }
+        return;
+      }
+
+      // Expiry gate: if the server has already moved on, skip entirely.
+      if (payload.expires_at !== undefined && Date.now() >= payload.expires_at) {
+        return;
+      }
 
       // Allowlist gate.
       const allowList = allowListRef.current;
@@ -100,24 +142,50 @@ export function useLocalToolHandler(
         }
       }
 
-      // Call the handler.
+      // Call the handler and emit the response.
+      let responsePayload: LocalToolResponsePayload;
       try {
         const result = await handlerRef.current(args_json);
-        socket.emit("local_tool_response", { request_id, tool_name, ...result });
+        responsePayload = { request_id, tool_name, ...result } as LocalToolResponsePayload;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        socket.emit("local_tool_response", {
-          request_id,
-          tool_name,
-          error: true,
-          errorMessage,
-        });
+        responsePayload = { request_id, tool_name, error: true as const, errorMessage };
+      }
+
+      socket.emit("local_tool_response", responsePayload);
+
+      // Ack-based retry: if no ack arrives before expires_at − 1 s, re-send once.
+      if (retryOnNoAckRef.current && payload.expires_at !== undefined) {
+        const retryMs = payload.expires_at - Date.now() - 1_000;
+        if (retryMs > 0) {
+          const storedPayload = responsePayload;
+          const timer = setTimeout(() => {
+            pendingAcksRef.current.delete(request_id);
+            socket.emit("local_tool_response", storedPayload);
+          }, retryMs);
+          pendingAcksRef.current.set(request_id, { timer, responsePayload });
+        }
+      }
+    };
+
+    const onAck = (ackPayload: LocalToolResponseAckPayload) => {
+      const pending = pendingAcksRef.current.get(ackPayload.request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingAcksRef.current.delete(ackPayload.request_id);
       }
     };
 
     socket.on("local_tool", onLocalTool);
+    socket.on("local_tool_response_ack", onAck);
     return () => {
       socket.off("local_tool", onLocalTool);
+      socket.off("local_tool_response_ack", onAck);
+      // Cancel all pending retry timers to avoid stale emissions after unmount.
+      for (const { timer } of pendingAcksRef.current.values()) {
+        clearTimeout(timer);
+      }
+      pendingAcksRef.current.clear();
     };
   }, [socket]);
 }
@@ -125,6 +193,8 @@ export function useLocalToolHandler(
 /**
  * Registers a catch-all `local_tool` listener that auto-replies
  * `{ notSupported: true }` for **any** tool event that has no other handler.
+ *
+ * `"fire_and_forget"` events are silently skipped — they require no reply.
  *
  * Mount this once near the root of your component tree (or inside your
  * `AgentStreamProvider` subtree). It runs after all `useLocalToolHandler`
@@ -145,6 +215,9 @@ export function useLocalToolFallback(socket: AgentSocket | null): void {
     if (!socket) return;
 
     const onFallback = (payload: LocalToolPayload) => {
+      // Fire-and-forget tools do not require a response — skip silently.
+      if (payload.tool_type === "fire_and_forget") return;
+
       // If another handler already responded, Socket.io has already executed
       // those listeners. This fires for every event — only reply if no previous
       // handler emitted a response. We use the convention that handlers return
