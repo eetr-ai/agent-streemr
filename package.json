@@ -1,0 +1,27 @@
+{
+  "name": "@eetr/agent-streemr-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Monorepo for @eetr/agent-streemr — reusable Socket.io + LangChain agent plumbing",
+  "workspaces": [
+    "agent-streemr",
+    "agent-streemr-react",
+    "agent-streemr-sample"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
