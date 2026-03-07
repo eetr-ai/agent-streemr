@@ -5,6 +5,7 @@ import {
   type AgentMessage,
 } from "@eetr/agent-streemr-react";
 import MessageBubble from "./MessageBubble";
+import ThinkingPanel from "./ThinkingPanel";
 
 // ---------------------------------------------------------------------------
 // Connection status badge
@@ -101,6 +102,7 @@ export default function ChatView() {
         {messages.map((msg: AgentMessage) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
+        <ThinkingPanel />
       </div>
 
       {/* Input */}

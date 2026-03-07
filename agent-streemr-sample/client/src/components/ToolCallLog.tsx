@@ -54,7 +54,7 @@ export default function ToolCallLog() {
   return (
     <aside
       className={`flex flex-col bg-slate-800 border-l border-slate-700 shrink-0 transition-all duration-200 ${
-        collapsed ? "w-8" : "w-64"
+        collapsed ? "w-8" : "w-72"
       }`}
     >
       <button

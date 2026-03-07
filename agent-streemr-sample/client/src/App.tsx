@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { AgentStreamProvider, useAgentStreamContext } from "@eetr/agent-streemr-react";
-import ThinkingPanel from "./components/ThinkingPanel";
 import ToolCallLog from "./components/ToolCallLog";
 import ChatView from "./components/ChatView";
+import RecipePanel from "./components/RecipePanel";
 
 // ---------------------------------------------------------------------------
 // Thread ID — persisted in localStorage so page refreshes keep conversation
@@ -62,26 +62,31 @@ function InnerApp() {
   }, [isStreaming]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100">
-      {/* Main chat column */}
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Header */}
-        <header className="flex items-center gap-3 px-5 py-3 bg-slate-800 border-b border-slate-700 shrink-0">
-          <span className="text-xl font-semibold tracking-tight">Agent Streemr</span>
-          <span className="text-xs text-slate-400 font-mono bg-slate-700 px-2 py-0.5 rounded">
-            sample
-          </span>
-        </header>
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-900 text-slate-100">
+      {/* Full-width header */}
+      <header className="flex items-center gap-3 px-5 py-3 bg-slate-800 border-b border-slate-700 shrink-0">
+        <span className="text-xl font-semibold tracking-tight">Agent Streemr</span>
+        <span className="text-xs text-slate-400 font-mono bg-slate-700 px-2 py-0.5 rounded">
+          sample
+        </span>
+      </header>
 
-        {/* Chat + thinking */}
-        <div className="flex flex-1 min-h-0">
+      {/* Two-column body */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Left half — recipe editor */}
+        <div className="flex w-1/2 min-h-0 overflow-hidden bg-slate-950">
+          <RecipePanel />
+        </div>
+
+        {/* Divider */}
+        <div className="w-0.5 shrink-0 bg-slate-600 shadow-[1px_0_6px_rgba(148,163,184,0.15)]" />
+
+        {/* Right half — chat + tool call log */}
+        <div className="flex w-1/2 min-h-0 overflow-hidden bg-slate-900">
           <ChatView />
-          <ThinkingPanel />
+          <ToolCallLog />
         </div>
       </div>
-
-      {/* Right sidebar — tool call log */}
-      <ToolCallLog />
     </div>
   );
 }
