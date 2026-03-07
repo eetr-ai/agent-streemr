@@ -110,7 +110,7 @@ createAgentSocketListener({
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `message` | `{ text, topic_name? }` | Trigger an agent run |
+| `message` | `{ text }` | Trigger an agent run |
 | `local_tool_response` | `{ request_id, tool_name, response_json? \| allowed:false \| notSupported:true \| error:true }` | Reply to a `local_tool` request |
 | `clear_context` | — | Reset conversation history for this thread |
 

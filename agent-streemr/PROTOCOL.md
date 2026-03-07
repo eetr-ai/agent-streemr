@@ -90,7 +90,6 @@ Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()
 ```ts
 {
   text: string;           // Required. The user's message text.
-  topic_name?: string;    // Optional. Thread title visible to the client. Derived from the first 80 chars of text if omitted.
   context?: Record<string, any>; // Optional. Inline context applied before the run (alternative to a prior set_context).
 }
 ```
@@ -115,7 +114,7 @@ The server calls `onContextUpdate(ctx, data, threadId)` with the existing mutabl
 
 #### `clear_context`
 
-**When to use:** Emit when the user wants to start a fresh conversation. The server waits for any active run to finish, then resets all per-thread state (context, topic name, in-flight tools, queue).
+**When to use:** Emit when the user wants to start a fresh conversation. The server waits for any active run to finish, then resets all per-thread state (context, in-flight tools, queue).
 
 **Payload:** None (emit with no arguments).
 
@@ -314,7 +313,6 @@ The `AgentStreamEvent` union is the internal contract between an agent implement
 
 | `AgentStreamEvent.type` | Maps to socket event | Description |
 |---|---|---|
-| `topic_name` | `topic_name` | Sets the human-readable thread title. Emit once at the start of a turn. |
 | `internal_token` | `internal_token` | One chunk of the agent's reasoning stream. |
 | `agent_response` | `agent_response` | One chunk (or final completion) of the assistant's reply. |
 | `response_reference` | `response_reference` | A resource reference the agent used (e.g. an article). Client uses `refType` + `slug` to build a deep link. |

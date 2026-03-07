@@ -116,8 +116,6 @@ type AgentRunner<TContext> = (
 The runner receives:
 - `message` — the user text (or synthetic follow-up text for async tool responses).
 - `threadId` — the conversation key for LangChain/LangGraph checkpointing.
-- `topicName` — resolved topic name for this turn (from `message.topic_name` or first 80 chars of text).
-- `currentTopicName` — the topic as supplied by the client (undefined if it was derived).
 - `context` — the current per-thread context object (your `TContext`).
 - `emitLocalTool` — unified emitter; use this to trigger local tool requests.
 - `localToolRegistry` — inject into `buildLangChainConfig` for sync-mode tools.
@@ -235,7 +233,6 @@ try {
 
 | `AgentStreamEvent.type` | Socket.io event emitted |
 |---|---|
-| `topic_name` | `topic_name` |
 | `internal_token` | `internal_token` |
 | `agent_response` | `agent_response` |
 | `response_reference` | `response_reference` |
