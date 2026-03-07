@@ -19,9 +19,12 @@ interface RecipeListProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRefresh: () => void;
+  onDelete: (id: string) => void;
 }
 
-function RecipeList({ recipes, selectedId, onSelect, onRefresh }: RecipeListProps) {
+function RecipeList({ recipes, selectedId, onSelect, onRefresh, onDelete }: RecipeListProps) {
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
   return (
     <div className="flex flex-col border-b border-slate-700 shrink-0" style={{ height: "13rem" }}>
       {/* Header */}
@@ -68,29 +71,66 @@ function RecipeList({ recipes, selectedId, onSelect, onRefresh }: RecipeListProp
           </p>
         ) : (
           recipes.map((r) => (
-            <button
+            <div
               key={r.id}
-              onClick={() => onSelect(r.id)}
-              className={`w-full text-left rounded-lg px-3 py-2 transition-colors ${
+              className={`flex items-center rounded-lg transition-colors ${
                 selectedId === r.id
                   ? "bg-blue-600/30 ring-1 ring-blue-500"
                   : "bg-slate-800 hover:bg-slate-700"
               }`}
             >
-              <p className="text-sm font-medium text-slate-200 truncate">{r.name}</p>
-              {r.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-0.5">
-                  {r.tags.slice(0, 4).map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-[0.6rem] bg-slate-700 text-slate-400 px-1.5 rounded"
+              {/* Select area */}
+              <button
+                onClick={() => { setConfirmingId(null); onSelect(r.id); }}
+                className="flex-1 min-w-0 text-left px-3 py-2"
+              >
+                <p className="text-sm font-medium text-slate-200 truncate">{r.name}</p>
+                {r.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {r.tags.slice(0, 4).map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-[0.6rem] bg-slate-700 text-slate-400 px-1.5 rounded"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </button>
+
+              {/* Spacer + delete */}
+              <div className="shrink-0 flex items-center pr-2">
+                {confirmingId === r.id ? (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => { setConfirmingId(null); onDelete(r.id); }}
+                      className="text-[0.65rem] text-red-400 hover:text-red-300 font-medium transition-colors"
                     >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </button>
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => setConfirmingId(null)}
+                      className="text-[0.65rem] text-slate-500 hover:text-slate-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmingId(r.id); }}
+                    title="Delete recipe"
+                    className="text-slate-600 hover:text-red-400 transition-colors p-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18" />
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
           ))
         )}
       </div>
@@ -104,14 +144,9 @@ function RecipeList({ recipes, selectedId, onSelect, onRefresh }: RecipeListProp
 
 interface RecipeViewerProps {
   recipe: Recipe | null;
-  onDelete?: () => void;
 }
 
-function RecipeViewer({ recipe, onDelete }: RecipeViewerProps) {
-  const [confirming, setConfirming] = useState(false);
-
-  // Reset confirmation state when the selected recipe changes
-  useEffect(() => { setConfirming(false); }, [recipe?.id]);
+function RecipeViewer({ recipe }: RecipeViewerProps) {
   if (!recipe) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-0 bg-slate-900/20">
@@ -202,42 +237,9 @@ function RecipeViewer({ recipe, onDelete }: RecipeViewerProps) {
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between mt-6">
-        <p className="text-[0.65rem] text-slate-600">
-          Last updated: {new Date(recipe.updatedAt).toLocaleString()}
-        </p>
-        {onDelete && (
-          confirming ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Delete this recipe?</span>
-              <button
-                onClick={() => { setConfirming(false); onDelete(); }}
-                className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors"
-              >
-                Yes, delete
-              </button>
-              <button
-                onClick={() => setConfirming(false)}
-                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirming(true)}
-              title="Delete recipe"
-              className="text-slate-600 hover:text-red-400 transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18" />
-                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-              </svg>
-            </button>
-          )
-        )}
-      </div>
+      <p className="text-[0.65rem] text-slate-600 mt-6">
+        Last updated: {new Date(recipe.updatedAt).toLocaleString()}
+      </p>
     </div>
   );
 }
@@ -297,12 +299,13 @@ export default function RecipePanel({ selectedRecipeId, onSelect }: RecipePanelP
 
   const selectedRecipe = recipes.find((r) => r.id === selectedId) ?? null;
 
-  const handleDelete = useCallback(async () => {
-    if (!selectedId) return;
+  const handleDelete = useCallback(async (id: string) => {
     try {
-      await deleteRecipe(selectedId);
-      setSelectedId(null);
-      onSelect?.(null);
+      await deleteRecipe(id);
+      if (selectedId === id) {
+        setSelectedId(null);
+        onSelect?.(null);
+      }
     } catch (err) {
       console.error("[RecipePanel] Failed to delete recipe:", err);
     }
@@ -318,8 +321,9 @@ export default function RecipePanel({ selectedRecipeId, onSelect }: RecipePanelP
           onSelect?.(id);
         }}
         onRefresh={loadRecipes}
+        onDelete={handleDelete}
       />
-      <RecipeViewer recipe={selectedRecipe} onDelete={selectedRecipe ? handleDelete : undefined} />
+      <RecipeViewer recipe={selectedRecipe} />
     </div>
   );
 }
