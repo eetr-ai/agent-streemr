@@ -12,6 +12,10 @@
  *   - Call useToolApproval() to access allowList, pendingApprovals, approve, deny
  *   - Pass allowList to useLocalToolHandler (via useRecipeTools)
  *   - Render <ToolApprovalCard> for each pendingApprovals entry in the chat
+ *
+ * State management uses @eetr/react-reducer-utils (bootstrapProvider).
+ * The reducer owns the serializable state (pendingApprovals, rememberedTools);
+ * promise resolvers and the AllowList instance live in refs in ToolApprovalInner.
  */
 
 import {
@@ -21,10 +25,10 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 import type { AllowList, AllowListDecision } from "@eetr/agent-streemr-react";
+import { bootstrapProvider, type ReducerAction } from "@eetr/react-reducer-utils";
 
 const LS_KEY = "agent-streemr:allowlist";
 
@@ -46,7 +50,7 @@ function saveRemembered(tools: string[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Types
+// Public types
 // ---------------------------------------------------------------------------
 
 export interface PendingApproval {
@@ -76,75 +80,112 @@ interface ToolApprovalContextValue {
 }
 
 // ---------------------------------------------------------------------------
+// Reducer
+// ---------------------------------------------------------------------------
+
+interface ToolApprovalState {
+  pendingApprovals: PendingApproval[];
+  rememberedTools: string[];
+}
+
+export enum ToolApprovalActionType {
+  ADD_PENDING    = "ADD_PENDING",
+  REMOVE_PENDING = "REMOVE_PENDING",
+  REMEMBER_TOOL  = "REMEMBER_TOOL",
+  FORGET_TOOL    = "FORGET_TOOL",
+}
+
+const initialState: ToolApprovalState = {
+  pendingApprovals: [],
+  rememberedTools: loadRemembered(),
+};
+
+function reducer(
+  state: ToolApprovalState,
+  action: ReducerAction<ToolApprovalActionType>,
+): ToolApprovalState {
+  switch (action.type) {
+    case ToolApprovalActionType.ADD_PENDING:
+      return { ...state, pendingApprovals: [...state.pendingApprovals, action.data as PendingApproval] };
+
+    case ToolApprovalActionType.REMOVE_PENDING:
+      return { ...state, pendingApprovals: state.pendingApprovals.filter((p) => p.id !== action.data) };
+
+    case ToolApprovalActionType.REMEMBER_TOOL: {
+      if (state.rememberedTools.includes(action.data as string)) return state;
+      const next = [...state.rememberedTools, action.data as string];
+      saveRemembered(next);
+      return { ...state, rememberedTools: next };
+    }
+
+    case ToolApprovalActionType.FORGET_TOOL: {
+      const next = state.rememberedTools.filter((t) => t !== action.data);
+      saveRemembered(next);
+      return { ...state, rememberedTools: next };
+    }
+
+    default:
+      return state;
+  }
+}
+
+const { Provider: StateProvider, useContextAccessors: useToolApprovalState } =
+  bootstrapProvider<ToolApprovalState, ReducerAction<ToolApprovalActionType>>(reducer, initialState);
+
+// ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
 
 const ToolApprovalContext = createContext<ToolApprovalContextValue | null>(null);
 
 // ---------------------------------------------------------------------------
-// Provider
+// Inner component — builds the full context value on top of reducer state
 // ---------------------------------------------------------------------------
 
-export function ToolApprovalProvider({ children }: { children: ReactNode }) {
-  // Renderable pending list (React state)
-  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
+function ToolApprovalInner({ children }: { children: ReactNode }) {
+  const { state, dispatch } = useToolApprovalState();
 
-  // Persistent remembered tools (localStorage-backed state)
-  const [rememberedTools, setRememberedTools] = useState<string[]>(loadRemembered);
-
-  const rememberTool = useCallback((toolName: string) => {
-    setRememberedTools((prev) => {
-      if (prev.includes(toolName)) return prev;
-      const next = [...prev, toolName];
-      saveRemembered(next);
-      return next;
-    });
-  }, []);
-
-  const forgetTool = useCallback((toolName: string) => {
-    setRememberedTools((prev) => {
-      const next = prev.filter((t) => t !== toolName);
-      saveRemembered(next);
-      return next;
-    });
-  }, []);
-
-  // Resolver functions keyed by approval id (ref — not state, avoids re-renders)
+  // Promise resolvers keyed by approval id — not state, avoids re-renders
   const resolversRef = useRef<Map<string, (decision: AllowListDecision) => void>>(new Map());
 
-  // Keep a ref to the latest rememberedTools so the stable allowList closure can read it
-  const rememberedToolsRef = useRef<string[]>(rememberedTools);
+  // Stable ref so the allowList closure always sees the latest remembered tools
+  const rememberedToolsRef = useRef<string[]>(state.rememberedTools);
   useEffect(() => {
-    rememberedToolsRef.current = rememberedTools;
-  }, [rememberedTools]);
+    rememberedToolsRef.current = state.rememberedTools;
+  }, [state.rememberedTools]);
 
   const resolve = useCallback((id: string, decision: AllowListDecision) => {
     const fn = resolversRef.current.get(id);
     if (!fn) return;
     resolversRef.current.delete(id);
-    setPendingApprovals((prev) => prev.filter((p) => p.id !== id));
+    dispatch({ type: ToolApprovalActionType.REMOVE_PENDING, data: id });
     fn(decision);
-  }, []);
+  }, [dispatch]);
 
   const approve = useCallback(
     (id: string, remember?: boolean) => {
       if (remember) {
-        // Find tool name from pending list before resolving
-        setPendingApprovals((prev) => {
-          const entry = prev.find((p) => p.id === id);
-          if (entry) rememberTool(entry.toolName);
-          return prev; // actual removal happens in resolve()
-        });
+        const entry = state.pendingApprovals.find((p) => p.id === id);
+        if (entry) dispatch({ type: ToolApprovalActionType.REMEMBER_TOOL, data: entry.toolName });
       }
       resolve(id, "allowed");
     },
-    [resolve, rememberTool]
+    [resolve, dispatch, state.pendingApprovals],
   );
 
   const deny = useCallback((id: string) => resolve(id, "denied"), [resolve]);
 
-  // The AllowList instance is stable — check() closes over refs so it always
-  // sees the latest state without being recreated per render.
+  const rememberTool = useCallback(
+    (toolName: string) => dispatch({ type: ToolApprovalActionType.REMEMBER_TOOL, data: toolName }),
+    [dispatch],
+  );
+
+  const forgetTool = useCallback(
+    (toolName: string) => dispatch({ type: ToolApprovalActionType.FORGET_TOOL, data: toolName }),
+    [dispatch],
+  );
+
+  // Stable AllowList — check() reads refs so it never needs to be recreated
   const allowList = useMemo<AllowList>(
     () => ({
       check(toolName: string, args: object): Promise<AllowListDecision> {
@@ -155,22 +196,44 @@ export function ToolApprovalProvider({ children }: { children: ReactNode }) {
         return new Promise((resolveFn) => {
           const id = crypto.randomUUID();
           resolversRef.current.set(id, resolveFn);
-          setPendingApprovals((prev) => [...prev, { id, toolName, args }]);
+          dispatch({ type: ToolApprovalActionType.ADD_PENDING, data: { id, toolName, args } });
         });
       },
     }),
-    []
+    [dispatch],
   );
 
   const value = useMemo(
-    () => ({ allowList, pendingApprovals, approve, deny, rememberedTools, rememberTool, forgetTool }),
-    [allowList, pendingApprovals, approve, deny, rememberedTools, rememberTool, forgetTool]
+    () => ({
+      allowList,
+      pendingApprovals: state.pendingApprovals,
+      approve,
+      deny,
+      rememberedTools: state.rememberedTools,
+      rememberTool,
+      forgetTool,
+    }),
+    [allowList, state.pendingApprovals, approve, deny, state.rememberedTools, rememberTool, forgetTool],
   );
 
   return (
     <ToolApprovalContext.Provider value={value}>
       {children}
     </ToolApprovalContext.Provider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
+export function ToolApprovalProvider({ children }: { children: ReactNode }) {
+  return (
+    <StateProvider>
+      <ToolApprovalInner>
+        {children}
+      </ToolApprovalInner>
+    </StateProvider>
   );
 }
 

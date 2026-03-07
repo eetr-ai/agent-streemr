@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@eetr/agent-streemr-react": "*",
+    "@eetr/react-reducer-utils": "^0.1.1",
     "dompurify": "^3.2.0",
     "marked": "^14.0.0",
     "react": "^18.3.0",
