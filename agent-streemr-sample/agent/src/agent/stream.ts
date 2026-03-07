@@ -5,6 +5,11 @@ import { createAgent } from "langchain";
 import { ChatOpenAI, tools as openAITools } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
 import type { AgentRunner, AgentStreamEvent } from "@eetr/agent-streemr";
+import {
+  EMIT_LOCAL_TOOL_KEY,
+  EMIT_LOCAL_TOOL_FIRE_FORGET_KEY,
+  SYNC_REGISTRY_KEY,
+} from "@eetr/agent-streemr";
 import { SYSTEM_PROMPT } from "./prompt.js";
 import {
   recipeList,
@@ -57,14 +62,22 @@ const agent = createAgent({
 // AgentRunner — maps to the signature expected by createAgentSocketListener
 // ---------------------------------------------------------------------------
 
-export const streamAgentResponse: AgentRunner<object> = async function* (message, { threadId }) {
+export const streamAgentResponse: AgentRunner<object> = async function* (
+  message,
+  { threadId, emitLocalTool, emitLocalToolFireAndForget, localToolRegistry },
+) {
   console.log(`[stream] thread=${threadId} message="${message.slice(0, 80)}${message.length > 80 ? "..." : ""}"`)
 
   const tokenStream = await agent.stream(
     { messages: [{ role: "user", content: message }] },
     {
       streamMode: "messages",
-      configurable: { thread_id: threadId },
+      configurable: {
+        thread_id: threadId,
+        [EMIT_LOCAL_TOOL_KEY]: emitLocalTool,
+        [EMIT_LOCAL_TOOL_FIRE_FORGET_KEY]: emitLocalToolFireAndForget,
+        [SYNC_REGISTRY_KEY]: localToolRegistry,
+      },
     },
   );
 
