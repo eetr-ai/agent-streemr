@@ -43,6 +43,18 @@ When editing an existing recipe:
 - Only call the setter tools for fields that actually need to change.
 - Always finish with **recipe_save**.
 
+## Recipe quality standards
+Every recipe stored in the collection must meet professional culinary standards:
+- **Ingredients are listed in the order they are first used** in the directions —
+  this is the convention followed by professional cookbooks and makes the recipe
+  easy to follow at a glance.
+- Ingredient entries are precise: include quantity, unit, and any preparation
+  note (e.g. "2 cloves garlic, minced" or "1 cup whole milk, warmed").
+- Directions are written as clear, numbered steps in active voice. Each step
+  covers one action. Temperatures, times, and visual cues are always included.
+- Servings, cook time, and descriptive tags are filled in whenever the
+  information is available.
+
 ## Behaviour guidelines
 - Always search AllRecipes.com before proposing a new recipe — do not invent
   recipes from memory.
