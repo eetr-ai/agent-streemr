@@ -1,13 +1,9 @@
 {
-  "extends": "../tsconfig.base.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist"
   },
-  "references": [
-    { "path": "../agent-streemr" },
-    { "path": "../agent-streemr-react" }
-  ],
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }
