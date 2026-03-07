@@ -1,11 +1,12 @@
 // Copyright 2026 Juan Alberto Lopez Cavallotti
 // SPDX-License-Identifier: Apache-2.0
 
+import { createAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { MemorySaver } from "@langchain/langgraph";
 import { HumanMessage, AIMessageChunk } from "@langchain/core/messages";
 import type { AgentRunner, AgentStreamEvent } from "@eetr/agent-streemr";
+import { SYSTEM_PROMPT } from "./prompt.js";
 
 // ---------------------------------------------------------------------------
 // Shared model + memory (process-lifetime singletons)
@@ -19,18 +20,13 @@ const model = new ChatOpenAI({
 
 const checkpointer = new MemorySaver();
 
-const SYSTEM_PROMPT =
-  "You are a helpful, concise AI assistant. " +
-  "Answer the user's questions clearly and directly. " +
-  "Keep responses reasonably brief unless asked for detail.";
-
 // Blank agent — no tools. LangGraph MemorySaver keeps conversation history
 // per threadId via the configurable.thread_id key.
-const agent = createReactAgent({
-  llm: model,
+const agent = createAgent({
+  model,
   tools: [],
-  checkpointSaver: checkpointer,
-  messageModifier: SYSTEM_PROMPT,
+  checkpointer,
+  systemPrompt: SYSTEM_PROMPT,
 });
 
 // ---------------------------------------------------------------------------
