@@ -158,7 +158,34 @@ Capabilities and UX:
 
 ---
 
+## Installation
+
+Both the server-side core and the React bindings are published on [npm](https://www.npmjs.com/):
+
+| Package | npm | Use case |
+|---------|-----|----------|
+| **@eetr/agent-streemr** | [npmjs.com/package/@eetr/agent-streemr](https://www.npmjs.com/package/@eetr/agent-streemr) | Node.js agent server: protocol, socket listener, registry, adapter, LangChain helpers |
+| **@eetr/agent-streemr-react** | [npmjs.com/package/@eetr/agent-streemr-react](https://www.npmjs.com/package/@eetr/agent-streemr-react) | React app: hooks and context to connect to an agent-streemr server |
+
+**Server (agent):**
+
+```bash
+npm install @eetr/agent-streemr
+```
+
+**Client (React):**
+
+```bash
+npm install @eetr/agent-streemr-react
+```
+
+Peer dependencies (e.g. `socket.io`, `zod`, `@langchain/core`) are listed on each package’s npm page. For a full working app, see [agent-streemr-sample](./agent-streemr-sample).
+
+---
+
 ## Quick Start (`agent-streemr`)
+
+After installing `@eetr/agent-streemr` (see [Installation](#installation)), wire the socket listener and local tools on your Node.js server:
 
 ```ts
 import { createServer } from "http";
