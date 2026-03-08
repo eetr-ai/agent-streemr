@@ -39,7 +39,7 @@ export type {
   AgentWorkingPayload,
   ClientToServerEvents,
   ServerToClientEvents,
-} from "./protocol/events";
+} from "./protocol/events.js";
 
 // ---------------------------------------------------------------------------
 // protocol/localTool — envelope types + parser (no runtime deps)
@@ -48,24 +48,23 @@ export type {
   LocalToolResponseStatus,
   LocalToolResponseEnvelope,
   ParsedLocalToolResponseEnvelope,
-} from "./protocol/localTool";
-export { parseLocalToolResponseEnvelope } from "./protocol/localTool";
+} from "./protocol/localTool.js";
+export { parseLocalToolResponseEnvelope } from "./protocol/localTool.js";
 
 // ---------------------------------------------------------------------------
 // protocol/stream — AgentStreamEvent union (no runtime deps)
 // ---------------------------------------------------------------------------
 export type {
   AgentStreamEvent,
-  TopicNameEvent,
   InternalTokenEvent,
   AgentResponseEvent,
   ResponseReferenceEvent,
-} from "./protocol/stream";
+} from "./protocol/stream.js";
 
 // ---------------------------------------------------------------------------
 // server/queue — per-thread task serialisation
 // ---------------------------------------------------------------------------
-export { ThreadQueue } from "./server/queue";
+export { ThreadQueue } from "./server/queue.js";
 
 // ---------------------------------------------------------------------------
 // server/registry — LocalToolRegistry + processor type
@@ -76,13 +75,13 @@ export type {
   HandledToolKind,
   HandleResponseResult,
   HandleResponseOutcome,
-} from "./server/registry";
-export { LocalToolRegistry } from "./server/registry";
+} from "./server/registry.js";
+export { LocalToolRegistry } from "./server/registry.js";
 
 // ---------------------------------------------------------------------------
 // server/adapter — AgentStreamEvent → socket.emit bridge
 // ---------------------------------------------------------------------------
-export { AgentStreamAdapter } from "./server/adapter";
+export { AgentStreamAdapter } from "./server/adapter.js";
 
 // ---------------------------------------------------------------------------
 // server/listener — main wiring factory
@@ -93,8 +92,8 @@ export type {
   EmitLocalToolFn,
   AgentRunner,
   CreateAgentSocketListenerOptions,
-} from "./server/listener";
-export { createAgentSocketListener, PROTOCOL_VERSION } from "./server/listener";
+} from "./server/listener.js";
+export { createAgentSocketListener, PROTOCOL_VERSION } from "./server/listener.js";
 
 // ---------------------------------------------------------------------------
 // langchain/localTool — createLocalTool factory + configurable key constants
@@ -103,10 +102,10 @@ export type {
   LocalToolMode,
   CreateLocalToolOptions,
   LangChainConfigOptions,
-} from "./langchain/localTool";
+} from "./langchain/localTool.js";
 export {
   createLocalTool,
   EMIT_LOCAL_TOOL_KEY,
   SYNC_REGISTRY_KEY,
   buildLangChainConfig,
-} from "./langchain/localTool";
+} from "./langchain/localTool.js";

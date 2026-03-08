@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect, vi } from "vitest";
-import { ThreadQueue } from "./queue";
+import { ThreadQueue } from "./queue.js";
 
 describe("ThreadQueue", () => {
   // -------------------------------------------------------------------------

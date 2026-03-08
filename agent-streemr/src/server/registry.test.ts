@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { LocalToolRegistry } from "./registry";
+import { LocalToolRegistry } from "./registry.js";
 
 type Ctx = { value?: string; denied?: boolean; notSupported?: boolean; errored?: boolean };
 

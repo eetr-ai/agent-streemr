@@ -21,7 +21,7 @@
  */
 
 import type { Socket } from "socket.io";
-import type { AgentStreamEvent } from "../protocol/stream";
+import type { AgentStreamEvent } from "../protocol/stream.js";
 
 /**
  * Bridges an `AsyncIterable<AgentStreamEvent>` (from any LangChain/LangGraph

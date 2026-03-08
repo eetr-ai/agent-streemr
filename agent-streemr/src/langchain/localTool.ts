@@ -271,6 +271,7 @@ export function createLocalTool<TArgs, TRequest extends object>(
   const name = tool_name.trim();
   if (!name) throw new Error("tool_name must be a non-empty string");
 
+  // @ts-ignore TS2589 – ZodSchema<TArgs> depth hits TS instantiation limit under NodeNext
   return new DynamicStructuredTool({
     name,
     description,

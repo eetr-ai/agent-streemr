@@ -5,54 +5,54 @@
   "author": "Juan Alberto Lopez Cavallotti",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "./dist/index.cjs",
+  "main": "./dist/cjs/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/cjs/index.js"
     },
     "./protocol/events": {
+      "types": "./dist/protocol/events.d.ts",
       "import": "./dist/protocol/events.js",
-      "require": "./dist/protocol/events.cjs",
-      "types": "./dist/protocol/events.d.ts"
+      "require": "./dist/cjs/protocol/events.js"
     },
     "./protocol/localTool": {
+      "types": "./dist/protocol/localTool.d.ts",
       "import": "./dist/protocol/localTool.js",
-      "require": "./dist/protocol/localTool.cjs",
-      "types": "./dist/protocol/localTool.d.ts"
+      "require": "./dist/cjs/protocol/localTool.js"
     },
     "./protocol/stream": {
+      "types": "./dist/protocol/stream.d.ts",
       "import": "./dist/protocol/stream.js",
-      "require": "./dist/protocol/stream.cjs",
-      "types": "./dist/protocol/stream.d.ts"
+      "require": "./dist/cjs/protocol/stream.js"
     },
     "./server/queue": {
+      "types": "./dist/server/queue.d.ts",
       "import": "./dist/server/queue.js",
-      "require": "./dist/server/queue.cjs",
-      "types": "./dist/server/queue.d.ts"
+      "require": "./dist/cjs/server/queue.js"
     },
     "./server/registry": {
+      "types": "./dist/server/registry.d.ts",
       "import": "./dist/server/registry.js",
-      "require": "./dist/server/registry.cjs",
-      "types": "./dist/server/registry.d.ts"
+      "require": "./dist/cjs/server/registry.js"
     },
     "./server/adapter": {
+      "types": "./dist/server/adapter.d.ts",
       "import": "./dist/server/adapter.js",
-      "require": "./dist/server/adapter.cjs",
-      "types": "./dist/server/adapter.d.ts"
+      "require": "./dist/cjs/server/adapter.js"
     },
     "./server/listener": {
+      "types": "./dist/server/listener.d.ts",
       "import": "./dist/server/listener.js",
-      "require": "./dist/server/listener.cjs",
-      "types": "./dist/server/listener.d.ts"
+      "require": "./dist/cjs/server/listener.js"
     },
     "./langchain/localTool": {
+      "types": "./dist/langchain/localTool.d.ts",
       "import": "./dist/langchain/localTool.js",
-      "require": "./dist/langchain/localTool.cjs",
-      "types": "./dist/langchain/localTool.d.ts"
+      "require": "./dist/cjs/langchain/localTool.js"
     }
   },
   "files": [
@@ -61,7 +61,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json && tsc --project tsconfig.build.cjs.json && node --input-type=commonjs -e \"require('fs').writeFileSync('dist/cjs/package.json', JSON.stringify({type:'commonjs'}, null, 2))\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist *.tsbuildinfo"

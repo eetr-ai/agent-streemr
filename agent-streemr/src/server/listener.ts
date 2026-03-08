@@ -36,12 +36,12 @@
 
 import { randomUUID } from "node:crypto";
 import type { Server, Socket } from "socket.io";
-import type { AgentStreamEvent } from "../protocol/stream";
-import type { ProtocolVersion } from "../protocol/events";
-import { parseLocalToolResponseEnvelope } from "../protocol/localTool";
-import { AgentStreamAdapter } from "./adapter";
-import { ThreadQueue } from "./queue";
-import type { LocalToolRegistry } from "./registry";
+import type { AgentStreamEvent } from "../protocol/stream.js";
+import type { ProtocolVersion } from "../protocol/events.js";
+import { parseLocalToolResponseEnvelope } from "../protocol/localTool.js";
+import { AgentStreamAdapter } from "./adapter.js";
+import { ThreadQueue } from "./queue.js";
+import type { LocalToolRegistry } from "./registry.js";
 
 // ---------------------------------------------------------------------------
 // Protocol version

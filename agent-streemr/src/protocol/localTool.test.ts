@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect } from "vitest";
-import { parseLocalToolResponseEnvelope } from "./localTool";
+import { parseLocalToolResponseEnvelope } from "./localTool.js";
 
 describe("parseLocalToolResponseEnvelope", () => {
   const BASE = { request_id: "req-1", tool_name: "my_tool" };

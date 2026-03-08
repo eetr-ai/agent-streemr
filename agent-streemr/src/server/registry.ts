@@ -22,7 +22,7 @@
  * ```
  */
 
-import type { LocalToolResponseStatus } from "../protocol/localTool";
+import type { LocalToolResponseStatus } from "../protocol/localTool.js";
 
 // ---------------------------------------------------------------------------
 // Processor type

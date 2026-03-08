@@ -7,7 +7,7 @@ import {
   createLocalTool,
   EMIT_LOCAL_TOOL_KEY,
   SYNC_REGISTRY_KEY,
-} from "./localTool";
+} from "./localTool.js";
 
 const schema = z.object({ query: z.string() });
 const buildRequest = (args: { query: string }) => ({ q: args.query });
