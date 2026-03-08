@@ -12,6 +12,7 @@
 |---------|-------------|--------|
 | [`agent-streemr`](./agent-streemr) | Core library: protocol types, socket listener, registry, adapter, LangChain factory | ✅ Ready |
 | [`agent-streemr-react`](./agent-streemr-react) | React hooks and context for connecting a UI to an agent-streemr server | ✅ Ready |
+| [`agent-streemr-swift`](./agent-streemr-swift) | Native Swift client for iOS, macOS, tvOS and watchOS (Swift Package Manager) | ✅ Ready |
 | [`agent-streemr-sample`](./agent-streemr-sample) | Full-stack reference app: LangGraph agent + React/Vite chat UI with recipe management | ✅ Ready |
 
 ---
@@ -101,6 +102,54 @@ createAgentSocketListener({
 - `protocol/` — no runtime deps; safe for client SDKs  
 - `server/` — `socket.io` peer dep  
 - `langchain/` — `@langchain/core` + `zod` peer deps
+
+---
+
+## Quick Start (`agent-streemr-swift`)
+
+```swift
+import AgentStreemrSwift
+
+// 1. Configure
+let config = AgentStreamConfiguration(
+    url: URL(string: "https://api.example.com")!,
+    token: bearerJWT
+)
+
+// 2. Create stream — @Observable, @MainActor
+let stream = AgentStream(configuration: config)
+
+// 3. Register local tools (optional)
+await stream.registerTool("get_location") { _ in
+    let loc = try await LocationService.shared.current()
+    return .success(responseJSON: ["lat": loc.latitude, "lon": loc.longitude])
+}
+
+// 4. Connect
+stream.connect(threadId: UIDevice.current.identifierForVendor!.uuidString)
+
+// 5. Inject via environment (SwiftUI / iOS 17+)
+WindowGroup { ContentView().environment(stream) }
+
+// 6. In a view
+@Environment(AgentStream.self) private var stream
+stream.sendMessage("Hello!")
+```
+
+Add the package via Swift Package Manager (Xcode → **File → Add Package Dependencies**) or in `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/your-org/agent-streemr", from: "1.0.0"),
+],
+targets: [
+    .target(name: "MyApp", dependencies: [
+        .product(name: "AgentStreemrSwift", package: "agent-streemr"),
+    ]),
+]
+```
+
+See [agent-streemr-swift/README.md](./agent-streemr-swift/README.md) for the full integration guide (Combine publishers, allow-lists, `LocalToolCoordinator`, UIKit usage, etc.).
 
 ---
 
