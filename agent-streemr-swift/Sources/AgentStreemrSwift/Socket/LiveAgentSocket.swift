@@ -17,11 +17,12 @@ public final class LiveAgentSocket: AgentSocketProtocol, @unchecked Sendable {
         threadId: String,
         extraConfig: SocketIOClientConfiguration = []
     ) {
-        // The server reads auth from socket.handshake.auth.
-        // socket.io-client-swift sends connectParams as query parameters on the handshake
-        // request, which the server can access via socket.handshake.auth when the engine
-        // is configured to accept them. We pass both token and installation_id here.
+        // The token is sent both ways for maximum server compatibility:
+        //   1. HTTP header: Authorization: Bearer <token>  (socket.handshake.headers["authorization"])
+        //   2. Query/auth param: token=<token>             (socket.handshake.auth.token / handshake.query.token)
+        // The thread identifier is also included in connectParams.
         var config: SocketIOClientConfiguration = [
+            .extraHeaders(["Authorization": "Bearer \(token)"]),
             .connectParams(["token": token, "installation_id": threadId]),
             .log(false),
             .reconnects(true),
