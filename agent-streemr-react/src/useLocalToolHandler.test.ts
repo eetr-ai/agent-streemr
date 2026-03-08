@@ -134,6 +134,38 @@ describe("useLocalToolHandler", () => {
     expect(allowList.check).toHaveBeenCalledWith(TOOL, { path: "/etc/secret" });
   });
 
+  it("runs allowList.check for fire_and_forget; when denied, handler is not called and no response is emitted", async () => {
+    const allowList = { check: vi.fn().mockResolvedValue("denied") };
+    const handler = vi.fn().mockResolvedValue({ response_json: {} });
+    renderHook(() =>
+      useLocalToolHandler(socket as any, TOOL, handler, { allowList })
+    );
+
+    await act(async () => {
+      socket._trigger("local_tool", makePayload(TOOL, {}, { tool_type: "fire_and_forget" }));
+    });
+
+    expect(allowList.check).toHaveBeenCalledWith(TOOL, {});
+    expect(handler).not.toHaveBeenCalled();
+    expect(socket.emit).not.toHaveBeenCalled();
+  });
+
+  it("runs allowList.check for fire_and_forget; when allowed, handler is called and no response is emitted", async () => {
+    const allowList = { check: vi.fn().mockResolvedValue("allowed") };
+    const handler = vi.fn().mockResolvedValue({ response_json: { done: true } });
+    renderHook(() =>
+      useLocalToolHandler(socket as any, TOOL, handler, { allowList })
+    );
+
+    await act(async () => {
+      socket._trigger("local_tool", makePayload(TOOL, { x: 1 }, { tool_type: "fire_and_forget" }));
+    });
+
+    expect(allowList.check).toHaveBeenCalledWith(TOOL, { x: 1 });
+    expect(handler).toHaveBeenCalledWith({ x: 1 });
+    expect(socket.emit).not.toHaveBeenCalled();
+  });
+
   // ---------------------------------------------------------------------------
   // Handler results
   // ---------------------------------------------------------------------------

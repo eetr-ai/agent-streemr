@@ -57,12 +57,14 @@ export type UseLocalToolHandlerOptions = {
  * listener on the socket. When a `local_tool` event arrives:
  *
  * 1. If the `tool_name` doesn't match, do nothing.
- * 2. If `tool_type === "fire_and_forget"`, invoke the handler for side effects
- *    and return without emitting any response.
- * 3. If `expires_at` is present and `Date.now() >= expires_at`, the server has
+ * 2. If `expires_at` is present and `Date.now() >= expires_at`, the server has
  *    already given up — skip silently.
- * 4. If an `allowList` is provided, `check()` is awaited. A `"denied"` or
- *    `"unknown"` decision emits `{ allowed: false }` and returns.
+ * 3. If an `allowList` is provided, `check()` is awaited for all tool types
+ *    (including fire_and_forget). A `"denied"` or `"unknown"` decision: for
+ *    sync/async emits `{ allowed: false }` and returns; for fire_and_forget
+ *    just returns (no response is sent).
+ * 4. If `tool_type === "fire_and_forget"`, invoke the handler for side effects
+ *    and return without emitting any response.
  * 5. The `handler` is called and the result is emitted as `local_tool_response`.
  * 6. If `retryOnNoAck` is `true` (default) and `expires_at` is present, a
  *    single retry is scheduled: if no `local_tool_response_ack` arrives before
@@ -112,34 +114,37 @@ export function useLocalToolHandler(
       if (payload.tool_name !== toolNameRef.current) return;
 
       const { request_id, tool_name, args_json } = payload;
-
-      // Fire-and-forget: invoke the handler for side effects but never reply.
-      if (payload.tool_type === "fire_and_forget") {
-        try {
-          await handlerRef.current(args_json);
-        } catch {
-          // Errors are silently swallowed — there is no response channel.
-        }
-        return;
-      }
+      const isFireAndForget = payload.tool_type === "fire_and_forget";
 
       // Expiry gate: if the server has already moved on, skip entirely.
       if (payload.expires_at !== undefined && Date.now() >= payload.expires_at) {
         return;
       }
 
-      // Allowlist gate.
+      // Allowlist gate (applies to all tool types, including fire_and_forget).
       const allowList = allowListRef.current;
       if (allowList) {
         const decision = await allowList.check(tool_name, args_json);
         if (decision !== "allowed") {
-          socket.emit("local_tool_response", {
-            request_id,
-            tool_name,
-            allowed: false,
-          });
+          if (!isFireAndForget) {
+            socket.emit("local_tool_response", {
+              request_id,
+              tool_name,
+              allowed: false,
+            });
+          }
           return;
         }
+      }
+
+      // Fire-and-forget: invoke the handler for side effects but never reply.
+      if (isFireAndForget) {
+        try {
+          await handlerRef.current(args_json);
+        } catch {
+          // Errors are silently swallowed — there is no response channel.
+        }
+        return;
       }
 
       // Call the handler and emit the response.
