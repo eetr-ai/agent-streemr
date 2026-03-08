@@ -5,21 +5,21 @@ final class InMemoryAllowListTests: XCTestCase {
 
     func testUnknownToolReturnsUnknown() async {
         let list = InMemoryAllowList()
-        let decision = await list.check(toolName: "read_file", args: [:])
+        let decision = await list.check(toolName: "read_file", args: [:], meta: nil)
         XCTAssertEqual(decision, .unknown)
     }
 
     func testAllowedToolReturnsAllowed() async {
         let list = InMemoryAllowList()
         await list.allow("read_file")
-        let decision = await list.check(toolName: "read_file", args: [:])
+        let decision = await list.check(toolName: "read_file", args: [:], meta: nil)
         XCTAssertEqual(decision, .allowed)
     }
 
     func testDeniedToolReturnsDenied() async {
         let list = InMemoryAllowList()
         await list.deny("read_file")
-        let decision = await list.check(toolName: "read_file", args: [:])
+        let decision = await list.check(toolName: "read_file", args: [:], meta: nil)
         XCTAssertEqual(decision, .denied)
     }
 
@@ -27,7 +27,7 @@ final class InMemoryAllowListTests: XCTestCase {
         let list = InMemoryAllowList()
         await list.allow("read_file")
         await list.deny("read_file")
-        let decision = await list.check(toolName: "read_file", args: [:])
+        let decision = await list.check(toolName: "read_file", args: [:], meta: nil)
         XCTAssertEqual(decision, .denied)
     }
 
@@ -35,7 +35,7 @@ final class InMemoryAllowListTests: XCTestCase {
         let list = InMemoryAllowList()
         await list.allow("read_file")
         await list.remove("read_file")
-        let decision = await list.check(toolName: "read_file", args: [:])
+        let decision = await list.check(toolName: "read_file", args: [:], meta: nil)
         XCTAssertEqual(decision, .unknown)
     }
 
@@ -44,8 +44,8 @@ final class InMemoryAllowListTests: XCTestCase {
         await list.allow("tool_a")
         await list.deny("tool_b")
         await list.clear()
-        let a = await list.check(toolName: "tool_a", args: [:])
-        let b = await list.check(toolName: "tool_b", args: [:])
+        let a = await list.check(toolName: "tool_a", args: [:], meta: nil)
+        let b = await list.check(toolName: "tool_b", args: [:], meta: nil)
         XCTAssertEqual(a, .unknown)
         XCTAssertEqual(b, .unknown)
     }

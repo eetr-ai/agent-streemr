@@ -261,6 +261,40 @@ final class AgentStreamTests: XCTestCase {
         XCTAssertEqual(stream.serverVersion, ProtocolVersion(major: 1, minor: 0))
     }
 
+    // MARK: - Local Tool Fallback
+
+    func testLocalToolWithoutCoordinatorEmitsNotSupportedFallback() async throws {
+        let (_, mock) = makeStream()
+
+        mock.trigger(SocketEvent.localTool, data: [
+            "request_id": "req-1",
+            "tool_name": "unhandled_tool",
+            "args_json": [:],
+            "tool_type": "sync",
+            "expires_at": Int(Date().addingTimeInterval(30).timeIntervalSince1970 * 1000)
+        ])
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        let emitted = mock.emissions(for: SocketEvent.localToolResponse).first
+        XCTAssertEqual(emitted?["request_id"] as? String, "req-1")
+        XCTAssertEqual(emitted?["tool_name"] as? String, "unhandled_tool")
+        XCTAssertEqual(emitted?["notSupported"] as? Bool, true)
+    }
+
+    func testLocalToolWithoutCoordinatorSkipsFireAndForgetFallback() async throws {
+        let (_, mock) = makeStream()
+
+        mock.trigger(SocketEvent.localTool, data: [
+            "request_id": "req-1",
+            "tool_name": "unhandled_fire_and_forget",
+            "args_json": [:],
+            "tool_type": "fire_and_forget"
+        ])
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertFalse(mock.wasEmitted(event: SocketEvent.localToolResponse))
+    }
+
     // MARK: - Disconnect
 
     func testDisconnectCallResetsAllState() async throws {

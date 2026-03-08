@@ -259,13 +259,27 @@ For prompt-the-user style gating, implement `AllowListProtocol`:
 
 ```swift
 actor ConfirmationAllowList: AllowListProtocol {
-    func check(toolName: String, args: [String: Any]) async -> AllowListDecision {
+    func check(
+        toolName: String,
+        args: [String: Any],
+        meta: AllowListCheckMeta?
+    ) async -> AllowListDecision {
         // Show a confirmation sheet and await the user's response
         let approved = await ConfirmationSheet.show(toolName: toolName, args: args)
+        // Return `.expired` if your approval UI timed out and the request should
+        // be ignored without replying.
         return approved ? .allowed : .denied
     }
 }
 ```
+
+`AllowListDecision.expired` tells the coordinator to skip execution and skip
+emitting `{ allowed: false }`, allowing the agent to retry if appropriate.
+
+`fire_and_forget` tool requests are still gated by expiry + allow-list checks.
+If they pass, the handler runs for side effects and no response is emitted.
+Fallback `notSupported` responses are emitted only for non-`fire_and_forget`
+requests.
 
 ---
 

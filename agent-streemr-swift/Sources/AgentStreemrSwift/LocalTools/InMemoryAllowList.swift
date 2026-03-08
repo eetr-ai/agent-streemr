@@ -47,7 +47,11 @@ public actor InMemoryAllowList: AllowListProtocol {
 
     // MARK: - AllowListProtocol
 
-    public func check(toolName: String, args: [String: Any]) async -> AllowListDecision {
+    public func check(
+        toolName: String,
+        args: [String: Any],
+        meta: AllowListCheckMeta?
+    ) async -> AllowListDecision {
         guard let value = entries[toolName] else { return .unknown }
         return value ? .allowed : .denied
     }

@@ -261,8 +261,19 @@ public final class AgentStream {
             guard let payload = LocalToolPayload.decode(from: data) else { return }
             let capturedSocket = socket
             Task { @MainActor [weak self] in
-                guard let coordinator = self?.localToolCoordinator else { return }
-                await coordinator.handle(payload, socket: capturedSocket)
+                if let coordinator = self?.localToolCoordinator {
+                    await coordinator.handle(payload, socket: capturedSocket)
+                    return
+                }
+                // React parity: when no specific handler is registered, non-fire_and_forget
+                // requests still receive a fallback notSupported response.
+                if payload.toolType != .fireAndForget {
+                    capturedSocket.emit(SocketEvent.localToolResponse, with: [[
+                        "request_id": payload.requestId,
+                        "tool_name": payload.toolName,
+                        "notSupported": true
+                    ]])
+                }
             }
         }
         socket.on(SocketEvent.localToolResponseAck) { [weak self] data in

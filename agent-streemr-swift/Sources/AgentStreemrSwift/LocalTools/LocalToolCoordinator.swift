@@ -76,22 +76,11 @@ public actor LocalToolCoordinator {
     ///
     /// Called by `AgentStream` when a `local_tool` socket event is received.
     public func handle(_ payload: LocalToolPayload, socket: any AgentSocketProtocol) async {
-        // Fire-and-forget: call handler for side effects, never send a response
-        if payload.toolType == .fireAndForget {
-            if let reg = registrations[payload.toolName] {
-                _ = try? await reg.handler(payload.argsJson)
-            }
-            return
-        }
-
-        // Expiry gate: if the server's deadline has already passed, skip silently
-        if let expiresAt = payload.expiresAt, Date() >= expiresAt {
-            return
-        }
+        let isFireAndForget = payload.toolType == .fireAndForget
 
         // Look up registration
         guard let reg = registrations[payload.toolName] else {
-            if enableFallback {
+            if enableFallback, !isFireAndForget {
                 let responseDict = buildResponseDict(
                     .notSupported,
                     requestId: payload.requestId,
@@ -102,18 +91,37 @@ public actor LocalToolCoordinator {
             return
         }
 
+        // Expiry gate: if the server's deadline has already passed, skip silently.
+        // Applies to all tool types, including fire_and_forget.
+        if let expiresAt = payload.expiresAt, Date() >= expiresAt {
+            return
+        }
+
         // Allow-list gate
         if let allowList = reg.allowList {
-            let decision = await allowList.check(toolName: payload.toolName, args: payload.argsJson)
+            let decision = await allowList.check(
+                toolName: payload.toolName,
+                args: payload.argsJson,
+                meta: AllowListCheckMeta(expiresAt: payload.expiresAt)
+            )
             if decision != .allowed {
-                let responseDict = buildResponseDict(
-                    .denied,
-                    requestId: payload.requestId,
-                    toolName: payload.toolName
-                )
-                socket.emit(SocketEvent.localToolResponse, with: [responseDict])
+                // .expired means "skip silently"; .denied/.unknown emit only for sync/async.
+                if decision != .expired, !isFireAndForget {
+                    let responseDict = buildResponseDict(
+                        .denied,
+                        requestId: payload.requestId,
+                        toolName: payload.toolName
+                    )
+                    socket.emit(SocketEvent.localToolResponse, with: [responseDict])
+                }
                 return
             }
+        }
+
+        // Fire-and-forget: invoke the handler for side effects, never send a response.
+        if isFireAndForget {
+            _ = try? await reg.handler(payload.argsJson)
+            return
         }
 
         // Execute handler
