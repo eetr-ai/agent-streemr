@@ -1,8 +1,149 @@
-# agent-streemr
+# @eetr/agent-streemr
 
-**Reusable Socket.io + LangChain agent plumbing.**
+**Reusable [Socket.io](https://socket.io) + LangChain agent plumbing.**
 
 `@eetr/agent-streemr` extracts the communication protocol, socket listener, local-tool registry, and stream adapter from a production LangChain/LangGraph agent into a standalone, dependency-tiered library — so you can build agents that use the same protocol with any tools or LLM, without rewriting the plumbing.
+
+Key takeaways:
+
+- 🔐 Run agents server-side (no secrets shipped to clients)
+- 🧰 Call client-side tools safely over a protocol ("local tools")
+- ⚡ Stream real-time UX over WebSockets ([Socket.io](https://socket.io))
+- 🔁 Iterate on agents without waiting for client app releases
+
+## Why this exists
+
+Building copilots that run on client devices (web browsers, native mobile apps, desktop clients) is hard and risky — even when the *data* and *useful functions* live locally.
+
+### ❌ Option A: call the LLM from the device
+
+This usually means embedding an AI provider API key in the client.
+
+🔑 In practice, that key should be treated as compromised by default: a motivated attacker can extract it and use it for anything.
+
+Even if you accepted that risk, client-side LLM calls make it difficult to:
+
+- 🚦 enforce rate limits and usage controls
+- 🚫 revoke or ban misbehaving users
+- 🧨 safely access higher-privilege integrations (e.g. service accounts) without expanding the blast radius to every installed client
+- 🔄 rotating those keys would be nearly impossible without disrupting service
+
+### ❌ Option B: expose an "agent API" from the server
+
+This helps with security and governance, but introduces new pain:
+
+- 🧾 you now have to version and evolve an API surface
+- 🧩 for each use case, the client must decide the sequence of calls and what information to send (you end up baking "agent behavior" into every client)
+- 🐢 in copilot scenarios, you typically want the agent to decide what's best and to be continuously improved through observation and iteration — which clashes with slow client release + rollout cycles (especially on native/mobile)
+- 🕒 responsiveness can suffer, especially when the UI needs tight interaction loops
+- 📱 native/mobile clients are often out of date, making upgrades and protocol changes slow to roll out
+
+### ✅ The agent-streemr approach: hybrid + inversion of control
+
+Run the agent on a server (so secrets, policies, and integrations stay centralized), while still letting the agent *act as if it were local* by calling client-side tools over a dedicated protocol.
+
+🔄 This implements an inversion of control: the server-side agent decides when and how the client supplies information (via local tools), so you can deliver better value through iteration on the agent without requiring client code changes.
+
+✨ The result is a system that feels like a local copilot, but is operated like a server product.
+
+```mermaid
+flowchart LR
+	C["Client app<br/>(Web / iOS / Android)"]
+	WS["WebSocket connection<br/>(Socket.io)"]
+	S["agent-streemr server"]
+	A["Agent runner<br/>(LangChain/LangGraph)"]
+
+	ST["Server-side tools<br/>(DB, APIs, integrations)"]
+	LT["Client-side tools<br/>(local tools)"]
+	PT["LLM provider tools<br/>(vendor capabilities)"]
+
+	C <--> WS
+	WS <--> S
+	S --> A
+	A --> ST
+	A -- local_tool --> C
+	C -- local_tool_response --> A
+	A --> PT
+```
+
+## How it works
+
+At a high level, your app UI connects to an agent running on a server over WebSockets ([Socket.io](https://socket.io)), and the connection is designed to be secured with JWT-based authentication.
+
+JWTs don't just authenticate the user — they also let the server enforce authorization policies and scope requests to the right tenant/thread (e.g. per user or per installation).
+
+A key concept is **client-side tools** ("local tools"): client-implemented functions invoked by the server-side agent over the socket. They let the agent access device-local data and capabilities without moving the agent (or secrets) onto the device.
+
+Once connected, the agent runs a tight control loop:
+
+- The user sends a `message`.
+- The agent decides what to do next.
+- It may emit one or more `local_tool` calls (each with a `request_id`).
+- The client executes them (or denies them) and replies with `local_tool_response`.
+- The agent incorporates results and either requests more tools or returns an `agent_response`.
+
+The agent can use three categories of tools:
+
+- **Server-side tools**: your own backend capabilities (databases, APIs, business logic).
+- **Client-side tools (local tools)**: functions that run on the user's device and can access local data (device state, files, sensors, UI prompts).
+- **LLM-provider tools**: capabilities offered by the model vendor (where applicable), invoked by the agent alongside your tools.
+
+Quick takeaways:
+
+- 🌐 Client connects via WebSockets and streams responses
+- 🤖 The agent runs on the server and decides what to do next
+- 📲 The agent can invoke client-side capabilities through `local_tool`
+- 🧩 The agent can also call server tools and LLM-provider tools
+
+Example sequence (local tools):
+
+Note: depending on the tool mode, the agent may await the response (`sync`), continue and handle it later (`async`), or emit one-way events (`fire_and_forget`).
+
+```mermaid
+sequenceDiagram
+	autonumber
+	participant Client
+	participant Server as agent-streemr server
+	participant Agent as Agent runner
+
+	Client->>Server: message { text: "Do X" }
+	Server->>Agent: run agent(thread)
+	Agent-->>Server: emit local_tool(request_id, tool_name, args_json)
+	Server-->>Client: local_tool(request_id, tool_name, args_json)
+	Client-->>Server: local_tool_response(request_id, tool_name, response_json)
+	Server-->>Agent: deliver tool result
+	Agent-->>Server: emit local_tool(...)
+	Server-->>Client: local_tool(...)
+	Client-->>Server: local_tool_response(...)
+	Server-->>Agent: deliver tool result
+	Agent-->>Server: agent_response(chunk..., done=true)
+	Server-->>Client: agent_response(chunk..., done=true)
+```
+
+## Benefits
+
+Security and governance:
+
+1. **No LLM supplier credentials on the client**: the LLM API key (and any other privileged credentials) stay server-side, so you don't ship secrets to untrusted devices.
+2. **Policy-based denial of service**: the agent service can rate-limit, block, or deny requests based on server-side policies (abuse prevention, quotas, auth, compliance).
+3. **Tighter privacy controls**: you can enforce what data is allowed to leave the device and what data is allowed to reach external systems, with auditable server-side enforcement.
+4. **User-controlled access via allowlists**: the client can require explicit approval (allowlists / human-in-the-loop) before a local tool runs or before sensitive fields are returned, so the user stays in control of what the agent can access.
+
+Iteration and quality:
+
+1. **Centralized monitoring and continuous improvement**: because the agent runs server-side, you can observe and debug behavior from one place (for example with LangSmith traces), measure quality, and iterate safely over time.
+2. **Update agents without breaking old clients**: the server-side agent can evolve independently; clients only need to understand the stable socket protocol and the set of local tools they implement.
+
+Capabilities and UX:
+
+1. **Server integrations + push back to the client**: the agent service can call databases and third-party integrations, then stream results back to the client in real time.
+2. **Client controls how data is shared**: local tools can shape, redact, summarize, or gate what they send back to the agent instead of being forced to satisfy a rigid server API contract.
+
+## What you can build with this
+
+- A mobile training coach that reads recent workouts from on-device storage and asks for additional context via an allowlisted prompt.
+- A browser copilot that can inspect the current page state locally and stream suggested edits back to the UI.
+- An enterprise assistant that queries internal databases/server integrations, then requests sensitive user/device info only when needed.
 
 ---
 
@@ -98,9 +239,10 @@ createAgentSocketListener({
     └── localTool.ts    # createLocalTool() factory (async / sync / fire-and-forget)
 ```
 
-**Dependency tiers:**  
-- `protocol/` — no runtime deps; safe for client SDKs  
-- `server/` — `socket.io` peer dep  
+**Dependency tiers:**
+
+- `protocol/` — no runtime deps; safe for client SDKs
+- `server/` — `socket.io` peer dep
 - `langchain/` — `@langchain/core` + `zod` peer deps
 
 ---
@@ -136,11 +278,11 @@ WindowGroup { ContentView().environment(stream) }
 stream.sendMessage("Hello!")
 ```
 
-Add the package via Swift Package Manager (Xcode → **File → Add Package Dependencies**) or in `Package.swift`:
+Add the package via Swift Package Manager (Xcode → **File → Add Package Dependencies**) or in `Package.swift` (repo: [https://github.com/eetr-ai/agent-streemr](https://github.com/eetr-ai/agent-streemr)):
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-org/agent-streemr", from: "1.0.0"),
+    .package(url: "https://github.com/eetr-ai/agent-streemr", from: "0.1.1"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
@@ -176,6 +318,7 @@ See [agent-streemr-swift/README.md](./agent-streemr-swift/README.md) for the ful
 `createLocalTool` supports three execution modes:
 
 ### `"async"` (default)
+
 Emit `local_tool`, return immediately, let the agent continue. The listener re-enqueues a follow-up run when `local_tool_response` arrives.
 
 ```ts
@@ -183,6 +326,7 @@ const tool = createLocalTool({ tool_name: "get_prefs", schema, buildRequest, des
 ```
 
 ### `"sync"`
+
 Emit `local_tool`, then **await** the client response before returning to LangChain. The tool call resolves with the client's data (or `{ status: "error", errorMessage: "timeout" }` after `ttlMs`).
 
 ```ts
@@ -197,6 +341,7 @@ const tool = createLocalTool({
 ```
 
 ### `"fire_and_forget"`
+
 Emit `local_tool` with no tracking. The client does not send `local_tool_response`. Use for one-way notifications or side-effects.
 
 ```ts
@@ -312,5 +457,5 @@ npm run build
 
 ## License
 
-Apache 2.0 — see [agent-streemr/LICENSE](./agent-streemr/LICENSE).  
+Apache 2.0 — see [agent-streemr/LICENSE](./agent-streemr/LICENSE).
 Copyright 2026 Juan Alberto Lopez Cavallotti.
