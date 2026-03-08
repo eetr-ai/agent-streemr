@@ -6,4 +6,4 @@ dist/
 !.env.example
 *.log
 .DS_Store
-agent-streemr-swift/.build/
+.build/
