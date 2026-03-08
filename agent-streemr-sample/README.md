@@ -137,17 +137,18 @@ All recipe tools are **local tools**: the agent emits `local_tool` with `request
 | Tool | Mode | Description |
 |------|------|-------------|
 | `recipe_list` | async | List all recipe summaries (id, name, tags, servings) from IndexedDB. |
-| `recipe_get_state` | sync | Return full state of one recipe by id. |
+| `recipe_get_state` | async | Return full state of one recipe by id. |
 | `recipe_create` | sync | Create a new recipe draft; returns id. |
-| `recipe_set_title` | sync | Set recipe name. |
-| `recipe_set_description` | sync | Set recipe description. |
-| `recipe_set_ingredients` | sync | Set ingredients (with optional `op`: add/remove/update). |
-| `recipe_set_directions` | sync | Set instructions. |
-| `recipe_save` | sync | Persist current draft to IndexedDB. |
-| `recipe_load` | sync | “Open” a recipe in the UI (selection in RecipeContext so the RecipePanel shows it). |
+| `recipe_set_title` | fire_and_forget | Set recipe name. |
+| `recipe_set_description` | fire_and_forget | Set recipe description. |
+| `recipe_set_ingredients` | fire_and_forget | Set ingredients (with optional `op`: add/remove/update). |
+| `recipe_set_directions` | fire_and_forget | Set instructions. |
+| `recipe_save` | fire_and_forget | Persist current draft to IndexedDB. |
+| `recipe_load` | fire_and_forget | “Open” a recipe in the UI (selection in RecipeContext so the RecipePanel shows it). |
 
-- **async**: agent does not wait for the response; it continues and may get the result in a follow-up turn.
-- **sync**: agent waits for the client’s `local_tool_response` before proceeding (with a TTL). Used for create/set/save/load so the agent can sequence steps correctly.
+- **async**: agent does not wait for the response; it continues and may get the result in a follow-up turn. Used for list/get so the agent can optionally use the result later.
+- **sync**: agent waits for the client’s `local_tool_response` before proceeding (with a TTL). Used for `recipe_create` so the agent gets the new id before calling other tools.
+- **fire_and_forget**: agent emits the tool call and does not wait for or track a response. The client still runs the handler and may send `local_tool_response`, but the agent does not block on it. Used for setters, save, and load so the agent can fire multiple updates without sequencing.
 
 The client also registers a **non-recipe fallback** in `useRecipeTools`: any `local_tool` whose name is not in the recipe set gets an immediate `local_tool_response` with `notSupported: true`.
 
@@ -279,7 +280,7 @@ Uses Vite; by default it can proxy to the agent or use `VITE_AGENT_URL`. Open th
 
 - **Architecture**: Agent (Node + Socket.io + LangGraph) + React client; agent defines local tools, client implements them and owns recipe data.
 - **Data**: Recipes and allowlist state in the browser; thread memory and API keys on the server.
-- **Tools**: One server-side tool (AllRecipes-scoped web search); nine local recipe tools (list, get, create, set_*, save, load), with sync/async as in the main README.
+- **Tools**: One server-side tool (AllRecipes-scoped web search); nine local recipe tools (list, get, create, set_*, save, load), with async, sync, and fire_and_forget modes as in the main README.
 - **UX**: Streaming chat, thinking panel, inline tool-approval cards, and a dedicated recipe panel so the agent and user can work with recipes without pasting them into the thread.
 
 For the protocol and API details (events, payloads, `createLocalTool` modes, `LocalToolRegistry`), see the [main README](../README.md).
