@@ -30,15 +30,30 @@ function RecipeList({ recipes, selectedId, onSelect, onRefresh, onDelete }: Reci
     <div className="flex flex-col border-b border-slate-700 shrink-0" style={{ height: "13rem" }}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 shrink-0 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Recipes
-          </span>
-          {recipes.length > 0 && (
-            <span className="text-[0.65rem] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded-full">
-              {recipes.length}
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+              Recipes
             </span>
-          )}
+            {recipes.length > 0 && (
+              <span className="text-[0.65rem] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded-full">
+                {recipes.length}
+              </span>
+            )}
+          </div>
+          <p className="text-[0.65rem] text-slate-500">
+            Stored in{" "}
+            <a
+              href="https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-slate-400 hover:text-slate-300 underline"
+            >
+              IndexedDB
+            </a>{" "}
+            (db: <code className="bg-slate-700/60 px-0.5 rounded text-slate-400">agent-streemr-recipes</code>).{" "}
+            Inspect: DevTools → Application → IndexedDB → agent-streemr-recipes.
+          </p>
         </div>
         <button
           onClick={onRefresh}

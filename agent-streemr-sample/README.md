@@ -144,10 +144,11 @@ All recipe tools are **local tools**: the agent emits `local_tool` with `request
 | `recipe_set_ingredients` | fire_and_forget | Set ingredients (with optional `op`: add/remove/update). |
 | `recipe_set_directions` | fire_and_forget | Set instructions. |
 | `recipe_save` | fire_and_forget | Persist current draft to IndexedDB. |
-| `recipe_load` | fire_and_forget | “Open” a recipe in the UI (selection in RecipeContext so the RecipePanel shows it). |
+| `recipe_load` | fire_and_forget | "Open" a recipe in the UI (selection in RecipeContext so the RecipePanel shows it). |
+| `recipe_delete` | sync | Delete a recipe from IndexedDB by id. |
 
 - **async**: agent does not wait for the response; it continues and may get the result in a follow-up turn. Used for list/get so the agent can optionally use the result later.
-- **sync**: agent waits for the client’s `local_tool_response` before proceeding (with a TTL). Used for `recipe_create` so the agent gets the new id before calling other tools.
+- **sync**: agent waits for the client’s `local_tool_response` before proceeding (with a TTL). Used for `recipe_create` (get new id) and `recipe_delete` (confirm removal).
 - **fire_and_forget**: agent emits the tool call and does not wait for or track a response. The client still runs the handler and may send `local_tool_response`, but the agent does not block on it. Used for setters, save, and load so the agent can fire multiple updates without sequencing.
 
 The client also registers a **non-recipe fallback** in `useRecipeTools`: any `local_tool` whose name is not in the recipe set gets an immediate `local_tool_response` with `notSupported: true`.
@@ -187,6 +188,8 @@ The sample implements **user-controlled access** as in the main README: the clie
 - **useRecipeTools** passes this `allowList` into `useLocalToolHandler(..., { allowList })`, so every recipe tool call goes through the allowlist unless the tool is remembered.
 
 So: **the user sees what the agent is asking for and can allow or deny each request**; optional “remember” reduces prompts for trusted tools.
+
+**TTL expiry:** When a tool request's server-side TTL (`expires_at`) passes before the user clicks Allow/Deny, the sample hides that approval card and does not send a response. The agent can retry. This uses the optional `meta.expires_at` in `AllowList.check()` (see [ToolApprovalContext](client/src/context/ToolApprovalContext.tsx)).
 
 ```mermaid
 flowchart LR
@@ -241,7 +244,7 @@ Use these to see how the sample is built and to copy patterns.
 - **[MessageBubble](client/src/components/MessageBubble.tsx)** — User vs assistant styling; assistant messages use markdown (marked + DOMPurify). User: blue bubble, right-aligned; assistant: slate bubble, left-aligned, with streaming cursor.
 - **[ThinkingPanel](client/src/components/ThinkingPanel.tsx)** — Inline “Thinking” card with sliding window of `internalThought` text, monospace, max height; only rendered when there is content.
 - **[ToolApprovalCard](client/src/components/ToolApprovalCard.tsx)** — Inline card for one pending tool: amber header, tool name, args list, “Remember for this tool” checkbox, Allow (emerald) / Deny (slate) buttons.
-- **[RecipePanel](client/src/components/RecipePanel.tsx)** — Left column: recipe list (from RecipeContext) with refresh and delete; right: selected recipe viewer (title, meta, description, ingredients, instructions, markdown-rendered). Styling: slate palette, borders, tags, last-updated footer.
+- **[RecipePanel](client/src/components/RecipePanel.tsx)** — Left column: recipe list (from RecipeContext) with refresh and delete; header states that recipes are **stored in IndexedDB** with a link to the [IndexedDB API spec](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) and a short “how to inspect” (DevTools → Application → IndexedDB → agent-streemr-recipes). Right: selected recipe viewer (title, meta, description, ingredients, instructions, markdown-rendered). Styling: slate palette, borders, tags, last-updated footer.
 
 ### Agent behavior
 

@@ -27,7 +27,11 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import type { AllowList, AllowListDecision } from "@eetr/agent-streemr-react";
+import type {
+  AllowList,
+  AllowListCheckMeta,
+  AllowListDecision,
+} from "@eetr/agent-streemr-react";
 import { bootstrapProvider, type ReducerAction } from "@eetr/react-reducer-utils";
 
 const LS_KEY = "agent-streemr:allowlist";
@@ -60,6 +64,8 @@ export interface PendingApproval {
   toolName: string;
   /** Arguments the agent is passing to the tool. */
   args: object;
+  /** Server-side expiry (Unix ms). When past, the approval card is hidden and no response is sent (agent can retry). */
+  expires_at?: number;
 }
 
 interface ToolApprovalContextValue {
@@ -185,10 +191,31 @@ function ToolApprovalInner({ children }: { children: ReactNode }) {
     [dispatch],
   );
 
+  // Keep a ref so the expiry interval always sees the latest pending list.
+  const pendingApprovalsRef = useRef<PendingApproval[]>(state.pendingApprovals);
+  pendingApprovalsRef.current = state.pendingApprovals;
+
+  // When a pending approval passes its expires_at, resolve with "expired" and remove from UI (no response sent; agent can retry).
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      pendingApprovalsRef.current.forEach((p) => {
+        if (p.expires_at != null && now >= p.expires_at) {
+          resolve(p.id, "expired" as AllowListDecision);
+        }
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resolve]);
+
   // Stable AllowList — check() reads refs so it never needs to be recreated
   const allowList = useMemo<AllowList>(
     () => ({
-      check(toolName: string, args: object): Promise<AllowListDecision> {
+      check(
+        toolName: string,
+        args: object,
+        meta?: AllowListCheckMeta
+      ): Promise<AllowListDecision> {
         // Auto-approve remembered tools without showing a card
         if (rememberedToolsRef.current.includes(toolName)) {
           return Promise.resolve("allowed" as AllowListDecision);
@@ -196,7 +223,10 @@ function ToolApprovalInner({ children }: { children: ReactNode }) {
         return new Promise((resolveFn) => {
           const id = crypto.randomUUID();
           resolversRef.current.set(id, resolveFn);
-          dispatch({ type: ToolApprovalActionType.ADD_PENDING, data: { id, toolName, args } });
+          dispatch({
+            type: ToolApprovalActionType.ADD_PENDING,
+            data: { id, toolName, args, expires_at: meta?.expires_at },
+          });
         });
       },
     }),

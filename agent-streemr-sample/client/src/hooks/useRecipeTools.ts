@@ -34,6 +34,7 @@ import {
   getAllRecipes,
   getRecipe,
   saveRecipe,
+  deleteRecipe,
   type Recipe,
 } from "../db/recipes";
 import { useToolApproval } from "../context/ToolApprovalContext";
@@ -51,6 +52,7 @@ const RECIPE_TOOLS = new Set([
   "recipe_set_directions",
   "recipe_save",
   "recipe_load",
+  "recipe_delete",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -333,6 +335,14 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     const saved = await saveRecipe(toSave);
     draftsRef.current.delete(id); // clean up draft after persisting
     return { response_json: { ok: true, id: saved.id, name: saved.name } };
+  }, { allowList });
+
+  // recipe_delete ------------------------------------------------------------
+  useLocalToolHandler(socket, "recipe_delete", async (args) => {
+    const { id } = args as { id: string };
+    await deleteRecipe(id);
+    draftsRef.current.delete(id);
+    return { response_json: { ok: true, id } };
   }, { allowList });
 
   // Fallback for non-recipe tools ---------------------------------------------
