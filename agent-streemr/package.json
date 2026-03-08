@@ -1,6 +1,6 @@
 {
   "name": "@eetr/agent-streemr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reusable Socket.io + LangChain agent plumbing: protocol types, socket listener, local-tool registry, and stream adapter.",
   "author": "Juan Alberto Lopez Cavallotti",
   "license": "Apache-2.0",
