@@ -2,7 +2,7 @@ import Foundation
 import SocketIO
 
 /// Configuration needed to connect an `AgentStream` to an agent-streemr server.
-public struct AgentStreamConfiguration: Sendable {
+public struct AgentStreamConfiguration: @unchecked Sendable {
     /// Base URL of the agent-streemr server (e.g. `https://api.example.com`).
     public let url: URL
     /// Bearer JWT used to authenticate the Socket.IO handshake.
