@@ -1,6 +1,6 @@
 {
   "name": "@eetr/agent-streemr-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React hooks and components for @eetr/agent-streemr — connects a Socket.io agent to React UI.",
   "author": "Juan Alberto Lopez Cavallotti",
   "license": "Apache-2.0",
