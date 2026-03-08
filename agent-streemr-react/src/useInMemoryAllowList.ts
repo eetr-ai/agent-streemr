@@ -10,7 +10,12 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { AllowList, AllowListDecision, InMemoryAllowListResult } from "./types";
+import type {
+  AllowList,
+  AllowListCheckMeta,
+  AllowListDecision,
+  InMemoryAllowListResult,
+} from "./types";
 
 /**
  * Manages an in-memory per-tool allowlist backed by React state.
@@ -62,7 +67,7 @@ export function useInMemoryAllowList(): InMemoryAllowListResult {
   // change) — it reads live values via entriesRef.
   const allowList = useMemo<AllowList>(
     () => ({
-      check(toolName: string): AllowListDecision {
+      check(toolName: string, _args: object, _meta?: AllowListCheckMeta): AllowListDecision {
         const value = entriesRef.current[toolName];
         if (value === undefined) return "unknown";
         return value ? "allowed" : "denied";

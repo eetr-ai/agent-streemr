@@ -131,7 +131,7 @@ describe("useLocalToolHandler", () => {
       socket._trigger("local_tool", makePayload(TOOL, { path: "/etc/secret" }));
     });
 
-    expect(allowList.check).toHaveBeenCalledWith(TOOL, { path: "/etc/secret" });
+    expect(allowList.check).toHaveBeenCalledWith(TOOL, { path: "/etc/secret" }, undefined);
   });
 
   it("runs allowList.check for fire_and_forget; when denied, handler is not called and no response is emitted", async () => {
@@ -145,7 +145,7 @@ describe("useLocalToolHandler", () => {
       socket._trigger("local_tool", makePayload(TOOL, {}, { tool_type: "fire_and_forget" }));
     });
 
-    expect(allowList.check).toHaveBeenCalledWith(TOOL, {});
+    expect(allowList.check).toHaveBeenCalledWith(TOOL, {}, undefined);
     expect(handler).not.toHaveBeenCalled();
     expect(socket.emit).not.toHaveBeenCalled();
   });
@@ -161,7 +161,7 @@ describe("useLocalToolHandler", () => {
       socket._trigger("local_tool", makePayload(TOOL, { x: 1 }, { tool_type: "fire_and_forget" }));
     });
 
-    expect(allowList.check).toHaveBeenCalledWith(TOOL, { x: 1 });
+    expect(allowList.check).toHaveBeenCalledWith(TOOL, { x: 1 }, undefined);
     expect(handler).toHaveBeenCalledWith({ x: 1 });
     expect(socket.emit).not.toHaveBeenCalled();
   });

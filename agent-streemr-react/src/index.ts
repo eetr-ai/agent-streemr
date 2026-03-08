@@ -45,6 +45,7 @@ export type {
   LocalToolHandlerResult,
   AllowListDecision,
   AllowList,
+  AllowListCheckMeta,
   InMemoryAllowListResult,
   // Protocol re-exports
   MessagePayload,

@@ -124,9 +124,12 @@ export function useLocalToolHandler(
       // Allowlist gate (applies to all tool types, including fire_and_forget).
       const allowList = allowListRef.current;
       if (allowList) {
-        const decision = await allowList.check(tool_name, args_json);
+        const meta =
+          payload.expires_at !== undefined ? { expires_at: payload.expires_at } : undefined;
+        const decision = await allowList.check(tool_name, args_json, meta);
         if (decision !== "allowed") {
-          if (!isFireAndForget) {
+          // "expired" → do not emit; agent can retry. "denied" / "unknown" → emit allowed: false for sync/async.
+          if (decision !== "expired" && !isFireAndForget) {
             socket.emit("local_tool_response", {
               request_id,
               tool_name,

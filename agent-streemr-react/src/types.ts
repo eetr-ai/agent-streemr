@@ -162,8 +162,19 @@ export type LocalToolHandlerResult =
  * - `"allowed"` — proceed with tool execution.
  * - `"denied"` — suppress and reply `{ allowed: false }` to the server.
  * - `"unknown"` — not in the list; treated as `"denied"` by default.
+ * - `"expired"` — request TTL expired before user decided; do not call handler
+ *   and do not emit a response (agent can retry).
  */
-export type AllowListDecision = "allowed" | "denied" | "unknown";
+export type AllowListDecision = "allowed" | "denied" | "unknown" | "expired";
+
+/**
+ * Optional metadata passed to `AllowList.check()` by the hook (e.g. from the
+ * local_tool payload). Use it to implement TTL-based expiry of approval prompts.
+ */
+export interface AllowListCheckMeta {
+  /** Server-side expiry timestamp (Unix ms). When past, the request is stale. */
+  expires_at?: number;
+}
 
 /**
  * Pluggable allowlist interface.
@@ -179,10 +190,17 @@ export interface AllowList {
    * Check whether the given tool invocation is permitted.
    * Receives `args` so decisions can be argument-aware
    * (e.g. allowlisting a file-read tool only for certain paths).
+   * The optional `meta` object may include `expires_at` (Unix ms) so the
+   * allowlist can hide the approval UI when the request has expired and
+   * resolve with `"expired"` (no response is sent to the server; agent can retry).
    *
    * May be synchronous or asynchronous.
    */
-  check(toolName: string, args: object): AllowListDecision | Promise<AllowListDecision>;
+  check(
+    toolName: string,
+    args: object,
+    meta?: AllowListCheckMeta
+  ): AllowListDecision | Promise<AllowListDecision>;
 }
 
 /** Return value of `useInMemoryAllowList`. */
