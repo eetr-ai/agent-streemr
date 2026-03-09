@@ -120,6 +120,62 @@ sequenceDiagram
 	Server-->>Client: agent_response(chunk..., done=true)
 ```
 
+## How AgentStreemr differs from MCP
+
+Both [MCP](https://modelcontextprotocol.io) (Model Context Protocol) and AgentStreemr let agents use tools, but they target different tool locations and network models.
+
+### MCP: tools on a known, reachable server
+
+With MCP, tools live on a **server** that the agent (or client) can reach at a known address (URL, host:port, or stdio). The agent calls tools by sending requests to that server over HTTP, WebSocket, or stdio. The tool implementation runs on that server, which is explicitly deployed and addressable.
+
+```mermaid
+flowchart LR
+	subgraph mcp [MCP model]
+		A[Agent or Client]
+		MCP[MCP Server]
+		T[Tools defined and run here]
+		A -->|"call tools"| MCP
+		MCP --- T
+	end
+```
+
+### AgentStreemr: tools on the client, over the existing connection
+
+With AgentStreemr, tools run on the **client** (browser, mobile app, desktop). The client is usually not reachable via public IPs or sockets — it sits behind NAT, has no open ports, or is not a server at all. The agent server does not "know" the client as a separate addressable service. The **client** initiates the connection to the agent server; when the agent needs a client capability, it sends a `local_tool` request over that **same** socket. There is no second connection or discovery step.
+
+```mermaid
+flowchart LR
+	subgraph as [AgentStreemr model]
+		C[Client app with tools]
+		WS[WebSocket]
+		S[Agent server]
+		AG[Agent]
+		C <-->|"client connects"| WS
+		WS <--> S
+		S --- AG
+		AG -->|"local_tool over same socket"| C
+	end
+```
+
+### Comparison
+
+| | MCP | AgentStreemr |
+|---|-----|--------------|
+| **Where tools run** | On a known, reachable server | On the client (device) |
+| **Who is addressable** | MCP server has URL/host/port | Client is not a public server; agent cannot "call" the client directly |
+| **Who initiates** | Agent or client calls the MCP server | Client connects to agent server; agent uses that connection for `local_tool` |
+| **Agent knows tool location** | Yes — agent targets the MCP server | No — agent sends over the socket to the already-connected client |
+
+### Define on the server, implement on the client
+
+Clients are considered **compromised by default**. In AgentStreemr, clients do **not** define tools (names, schemas, descriptions, or what gets sent to the LLM). They only **implement** the tools that the server defines. That separation reduces risk:
+
+- **Security**: A compromised client cannot inject new tool definitions or change tool contracts.
+- **Prompt engineering**: The client cannot influence the agent's tool list or descriptions, so it cannot inject malicious tool definitions into the prompt.
+- **Data exposure**: The server controls which tools exist and what parameters they accept; the client cannot expand the surface area of data the agent can request.
+
+With MCP, tool definitions typically live on the same (trusted) MCP server that implements them. With AgentStreemr, the **agent server** is the single source of truth for tool definitions; the client is an untrusted executor only.
+
 ## Benefits
 
 Security and governance:
