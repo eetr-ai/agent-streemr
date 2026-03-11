@@ -5,6 +5,8 @@ import SocketIO
 public final class LiveAgentSocket: AgentSocketProtocol, @unchecked Sendable {
     private let manager: SocketManager
     private let socket: SocketIOClient
+    private let token: String
+private let threadId: String
 
     /// - Parameters:
     ///   - url: Base URL of the agent-streemr server (e.g. `https://api.example.com`).
@@ -33,6 +35,8 @@ public final class LiveAgentSocket: AgentSocketProtocol, @unchecked Sendable {
         }
         manager = SocketManager(socketURL: url, config: config)
         socket = manager.defaultSocket
+        self.token = token
+        self.threadId = threadId
     }
 
     public var isConnected: Bool {
