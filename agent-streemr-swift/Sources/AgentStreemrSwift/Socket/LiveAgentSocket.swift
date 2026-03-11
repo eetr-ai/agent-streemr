@@ -60,7 +60,10 @@ public final class LiveAgentSocket: AgentSocketProtocol, @unchecked Sendable {
     }
 
     public func connect() {
-        socket.connect()
+        socket.connect(withPayload: [
+            "installation_id": threadId,
+            "token": token,
+        ])
     }
 
     public func disconnect() {
