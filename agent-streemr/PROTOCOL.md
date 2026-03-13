@@ -49,14 +49,22 @@ Client                          Server
   |                               |  authenticate() → { threadId, ... }
   |                               |  socket.join(threadId)
   |                               |
-  |------ client_hello ---------->|  { version: { major, minor } }
-  |<----- welcome ----------------| compatible → { server_version }
+  |------ client_hello ---------->|  { version, agentId?, inactivity_timeout_ms? }
+  |<----- welcome ----------------| compatible → { server_version, capabilities }
   |   OR  version_not_supported --|  incompatible → disconnect
   |                               |
   |  ... conversation turns ...   |
   |                               |
+  |------ set_attachment -------->|  { type, body, name? }
+  |------ message --------------->|  attachment consumed with this message
+  |                               |
   |------ clear_context -------->|
   |<----- context_cleared --------|  broadcast to entire threadId room
+  |                               |
+  |  ... inactivity period ...    |
+  |                               |
+  |<----- inactive_close ---------|  { reason } — server about to disconnect
+  |       (disconnect)            |  server closes socket
 ```
 
 Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()` returns `null` the socket is rejected before any events are processed.
@@ -74,10 +82,22 @@ Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()
 **Payload:** `ClientHelloPayload`
 
 ```ts
-{ version: { major: number; minor: number } }
+{
+  version: { major: number; minor: number };
+  agentId?: string;               // Optional. Selects which agent handles this session.
+  inactivity_timeout_ms?: number;  // Optional. Client's preferred inactivity timeout.
+}
 ```
 
 **Purpose:** Initiates the protocol version handshake. The server replies with `welcome` or `version_not_supported`.
+
+**Fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `version` | Yes | Client protocol version for compatibility check. |
+| `agentId` | No | Identifies the agent the client wants to talk to. Allows multi-agent servers to route the session to the correct agent. If omitted, the server uses its default agent. |
+| `inactivity_timeout_ms` | No | The client's preferred inactivity timeout in milliseconds. Must not exceed the server's `inactivity_timeout_ms` advertised in the `welcome` capabilities. If it does, the server ignores it and uses its own value. See [Inactivity timeout](#inactivity-timeout). |
 
 ---
 
@@ -95,6 +115,32 @@ Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()
 ```
 
 **Design note:** `context` on `message` is the preferred way to send per-turn context because it is applied atomically with the message, avoiding a race between `set_context` and `message`. Use a standalone `set_context` only when you need to update context without sending a message (e.g. on app load).
+
+---
+
+#### `set_attachment`
+
+**When to use:** Emit to attach a file to the next user message. The attachment is "staged" — the server holds it until the next `message` event on the same socket, at which point it is consumed and forwarded to the agent alongside the message text. Sending a second `set_attachment` before a `message` replaces the previous staged attachment.
+
+**Payload:** `SetAttachmentPayload`
+
+```ts
+{
+  type: "image" | "markdown";  // Required. The kind of content being attached.
+  body: string;                 // Required. Base64-encoded content.
+  name?: string;                // Optional. Filename or human-readable label.
+}
+```
+
+**Fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | Yes | `"image"` for raster images (PNG, JPEG, WebP, etc.) or `"markdown"` for Markdown text files. |
+| `body` | Yes | The file content encoded as a Base64 string. |
+| `name` | No | An optional filename or label — e.g. `"screenshot.png"`, `"notes.md"`. Useful for display and logging. |
+
+**Size constraint:** The `body` field (the Base64-encoded string) **must not** exceed `max_message_size_bytes` advertised in the `welcome` capabilities. Well-behaved clients validate the size locally before sending. The server will reject payloads that exceed the limit with an `error` event and discard the attachment.
 
 ---
 
@@ -164,10 +210,24 @@ The server validates the payload strictly with `parseLocalToolResponseEnvelope` 
 **Payload:** `WelcomePayload`
 
 ```ts
-{ server_version: { major: number; minor: number } }
+{
+  server_version: { major: number; minor: number };
+  capabilities: {
+    max_message_size_bytes: number;   // Maximum allowed payload size for client messages.
+    inactivity_timeout_ms: number;    // Server's default inactivity timeout.
+  };
+}
 ```
 
-Store `server_version` for diagnostics. Normal operation can continue after this event.
+**Fields:**
+
+| Field | Description |
+|---|---|
+| `server_version` | Server protocol version. Store for diagnostics. |
+| `capabilities.max_message_size_bytes` | The maximum size, in bytes, of any single client-to-server payload. Applies in particular to the `body` field of `set_attachment`. Clients **must not** send messages exceeding this limit. |
+| `capabilities.inactivity_timeout_ms` | The server's default inactivity timeout in milliseconds. Defaults to **600 000** (10 minutes) if not configured. See [Inactivity timeout](#inactivity-timeout). |
+
+Store `server_version` for diagnostics and `capabilities` for enforcing local constraints. Normal operation can continue after this event.
 
 ---
 
@@ -293,6 +353,24 @@ Streaming convention:
 
 ---
 
+#### `inactive_close`
+
+**When to receive:** When the server is about to disconnect the socket due to inactivity timeout expiry. This event is emitted **before** the server closes the connection.
+
+**Payload:** `InactiveClosePayload`
+
+```ts
+{ reason: string }
+```
+
+**Client behaviour on receipt:**
+
+1. **Do not auto-reconnect.** Clients **must not** attempt an automatic reconnect after receiving `inactive_close`. Socket.io's built-in reconnect should be suppressed for this disconnect reason.
+2. **Show user feedback.** Display a clear message explaining that the session was closed due to inactivity (use `reason` for the display text).
+3. **Reconnect only on user action.** The client should offer a "Reconnect" button or equivalent. A new connection cycle (including a fresh `client_hello`) must be initiated by the user.
+
+---
+
 #### `error`
 
 **When to receive:** When an unhandled error occurs on the server during event processing.
@@ -334,3 +412,28 @@ Every `sync` and `async` `local_tool` request carries an `expires_at` timestamp 
 For `sync` tools, the registry's `awaitResponse()` promise resolves with `{ status: "error", errorMessage: "timeout" }` when the TTL fires — the agent run continues rather than hanging indefinitely.
 
 Default TTL: **30 seconds** (configurable via `localToolTtlMs` on `createAgentSocketListener`).
+
+---
+
+## Inactivity timeout
+
+To prevent idle connections from consuming server resources indefinitely, the protocol includes an inactivity timeout mechanism negotiated during the handshake.
+
+### Negotiation rules
+
+1. The server advertises its default timeout in `welcome.capabilities.inactivity_timeout_ms`. The default value is **600 000 ms (10 minutes)** when not explicitly configured.
+2. The client may propose a shorter timeout by setting `inactivity_timeout_ms` in `client_hello`.
+3. The **effective timeout** is `min(server, client)` when the client provides a value. If the client omits the field, the server's value is used as-is. If the client proposes a value *greater* than the server's, the server ignores it and uses its own.
+4. "Inactivity" means no `message` or `local_tool_response` events are received on the socket within the effective timeout window. Presence of an active agent run (streaming response, pending local tool) resets the timer.
+
+### Disconnect sequence
+
+1. The server detects the effective timeout has elapsed without qualifying activity.
+2. The server emits `inactive_close` with a human-readable `reason` string.
+3. The server closes the socket.
+
+### Client responsibilities
+
+- **Well-behaved clients** should track the effective timeout locally and disconnect proactively before the server does (e.g. show a "session expiring" warning a minute before the deadline).
+- **On receiving `inactive_close`:** suppress auto-reconnect, display the reason to the user, and only reconnect on explicit user action (button click, page refresh, etc.).
+- **After self-disconnecting due to inactivity:** the same UX rules apply — show feedback and wait for user intent before reconnecting.
