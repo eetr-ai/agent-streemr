@@ -49,6 +49,17 @@ export type MessagePayload = {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   context?: Record<string, any>;
+  /**
+   * Optional correlation ID tying this message to a preceding `start_attachments`
+   * sequence. When present the server checks that all expected attachments have
+   * been staged, consumes them (ordered by `seq`), and forwards them to the agent
+   * alongside the message text.
+   *
+   * If omitted (or mismatched) while an attachment staging session is active on
+   * the socket, the server silently discards the staged attachments and processes
+   * the message as a plain text message.
+   */
+  attachment_correlation_id?: string;
 };
 
 /**
@@ -104,6 +115,55 @@ export type ClientHelloPayload = {
   /** The protocol version the client is implementing. */
   version: ProtocolVersion;
 };
+
+// ---------------------------------------------------------------------------
+// Attachment types (multi-step upload)
+// ---------------------------------------------------------------------------
+
+/**
+ * Describes one attachment's content. Reused by `AttachmentPayload` and as the
+ * shape forwarded to the agent runner after staging is consumed.
+ */
+export type Attachment = {
+  /** `"image"` for raster images (PNG, JPEG, WebP, etc.) or `"markdown"` for Markdown text files. */
+  type: "image" | "markdown";
+  /** The file content encoded as a Base64 string. */
+  body: string;
+  /** Optional filename or human-readable label — e.g. `"screenshot.png"`, `"notes.md"`. */
+  name?: string;
+};
+
+/**
+ * Sent by the client to begin a multi-step attachment upload sequence.
+ * The server initializes per-socket staging state and expects exactly `count`
+ * subsequent `attachment` events sharing the same `correlation_id`.
+ *
+ * Event name: `start_attachments`
+ */
+export type StartAttachmentsPayload = {
+  /** Client-generated UUID uniquely identifying this attachment sequence. */
+  correlation_id: string;
+  /** Exact number of `attachment` events that will follow. Must be ≥ 1. */
+  count: number;
+};
+
+/**
+ * Sent by the client for each attachment in the sequence. Carries a 0-based
+ * sequence number for ordering, deduplication, and targeted retry.
+ *
+ * The server validates each attachment individually against `max_message_size_bytes`
+ * and emits `attachment_ack` on success. Retransmissions of the same
+ * `(correlation_id, seq)` pair are idempotent — the server re-emits the ack
+ * without double-storing.
+ *
+ * Event name: `attachment`
+ */
+export type AttachmentPayload = {
+  /** Must match the `correlation_id` from the preceding `start_attachments`. */
+  correlation_id: string;
+  /** 0-based index of this attachment within the sequence. Must satisfy `0 ≤ seq < count`. */
+  seq: number;
+} & Attachment;
 
 // ---------------------------------------------------------------------------
 // Server → Client events
@@ -241,6 +301,20 @@ export type AgentWorkingPayload = {
   working: boolean;
 };
 
+/**
+ * Emitted by the server to confirm that an individual `attachment` event was
+ * received, validated, and staged successfully. Also re-emitted on duplicate
+ * receipt (idempotent) so the client can safely retry.
+ *
+ * Event name: `attachment_ack`
+ */
+export type AttachmentAckPayload = {
+  /** Echoes the `correlation_id` from the originating `attachment`. */
+  correlation_id: string;
+  /** Echoes the `seq` from the originating `attachment`. */
+  seq: number;
+};
+
 // ---------------------------------------------------------------------------
 // Convenience maps (for typed socket.io usage)
 // ---------------------------------------------------------------------------
@@ -264,6 +338,10 @@ export interface ClientToServerEvents {
   local_tool_response: (payload: LocalToolResponsePayload) => void;
   clear_context: () => void;
   set_context: (payload: SetContextPayload) => void;
+  /** Begins a multi-step attachment upload. Must be followed by `count` `attachment` events. */
+  start_attachments: (payload: StartAttachmentsPayload) => void;
+  /** Uploads one attachment in a sequence started by `start_attachments`. */
+  attachment: (payload: AttachmentPayload) => void;
 }
 
 /**
@@ -288,5 +366,7 @@ export interface ServerToClientEvents {
   local_tool_response_ack: (payload: LocalToolResponseAckPayload) => void;
   agent_response: (payload: AgentResponsePayload) => void;
   context_cleared: (payload: ContextClearedPayload) => void;
+  /** Acknowledges a validated and staged `attachment`. Idempotent on retry. */
+  attachment_ack: (payload: AttachmentAckPayload) => void;
   error: (payload: ErrorPayload) => void;
 }

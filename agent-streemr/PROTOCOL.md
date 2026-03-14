@@ -38,6 +38,15 @@ The server can ask the client to execute tools on its behalf (e.g. reading a loc
 
 For `sync` and `async` local tool requests the server tracks in-flight requests by `request_id` with a configurable TTL (default 30 s). The server sends `local_tool_response_ack` when it receives and processes the client's reply. The React client uses this to cancel retry timers it set up defensively.
 
+### Multi-step attachment upload
+
+Attachments are uploaded via a correlated multi-step sequence rather than as a single monolithic payload. This design enables:
+
+- **Per-attachment size validation** — the server validates each `attachment.body` independently against `max_message_size_bytes`, giving precise error feedback.
+- **Resumable uploads** — each attachment carries a `correlation_id` and a 0-based `seq`. The server deduplicates by `(correlation_id, seq)` and re-acks duplicates, making retry safe.
+- **Implicit cancellation** — if the user changes their mind, sending a `message` without the `attachment_correlation_id` (or with a different one) silently flushes staged attachments. No explicit cancel event is needed.
+- **Clean public API** — client SDKs (React, Swift) expose a simple `sendMessage(text, attachments?)` that orchestrates the wire protocol internally.
+
 ---
 
 ## Connection lifecycle
@@ -55,8 +64,13 @@ Client                          Server
   |                               |
   |  ... conversation turns ...   |
   |                               |
-  |------ set_attachment -------->|  { type, body, name? }
-  |------ message --------------->|  attachment consumed with this message
+  |--- start_attachments -------->|  { correlation_id, count }
+  |--- attachment (seq 0) ------->|  { correlation_id, seq, type, body, name? }
+  |<-- attachment_ack (seq 0) ----|  { correlation_id, seq }
+  |--- attachment (seq 1) ------->|
+  |<-- attachment_ack (seq 1) ----|
+  |--- message ------------------>|  { text, context?, attachment_correlation_id }
+  |                               |  attachments consumed with this message
   |                               |
   |------ clear_context -------->|
   |<----- context_cleared --------|  broadcast to entire threadId room
@@ -66,6 +80,8 @@ Client                          Server
   |<----- inactive_close ---------|  { reason } — server about to disconnect
   |       (disconnect)            |  server closes socket
 ```
+
+> **Note on attachment ordering:** The client may fire all N `attachment` events without waiting for acks. The diagram above shows interleaved acks for clarity, but in practice the client sends all attachments immediately and tracks acks asynchronously.
 
 Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()` returns `null` the socket is rejected before any events are processed.
 
@@ -118,17 +134,16 @@ Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()
 
 ---
 
-#### `set_attachment`
+#### `start_attachments`
 
-**When to use:** Emit to attach a file to the next user message. The attachment is "staged" — the server holds it until the next `message` event on the same socket, at which point it is consumed and forwarded to the agent alongside the message text. Sending a second `set_attachment` before a `message` replaces the previous staged attachment.
+**When to use:** Emit to begin a multi-step attachment upload sequence before sending a message. The client generates a UUID `correlation_id` that ties the entire sequence together: `start_attachments` → N × `attachment` → `message`.
 
-**Payload:** `SetAttachmentPayload`
+**Payload:** `StartAttachmentsPayload`
 
 ```ts
 {
-  type: "image" | "markdown";  // Required. The kind of content being attached.
-  body: string;                 // Required. Base64-encoded content.
-  name?: string;                // Optional. Filename or human-readable label.
+  correlation_id: string;  // Required. Client-generated UUID identifying this attachment sequence.
+  count: number;           // Required. Exact number of `attachment` events that will follow.
 }
 ```
 
@@ -136,11 +151,81 @@ Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()
 
 | Field | Required | Description |
 |---|---|---|
+| `correlation_id` | Yes | A client-generated UUID that uniquely identifies this attachment sequence. The same ID must appear on each subsequent `attachment` event and on the `message` that consumes them. |
+| `count` | Yes | The exact number of `attachment` events the client will send. Must be ≥ 1. |
+
+**Server behaviour:**
+- Initializes per-socket staging state: `{ correlation_id, expected: count, received: Map<seq, Attachment> }`.
+- If a previous staging sequence was in progress on this socket, it is silently discarded and replaced.
+- Emits `error` if `count` is not a positive integer or `correlation_id` is missing/empty.
+
+---
+
+#### `attachment`
+
+**When to use:** Emit once per attachment in the sequence started by `start_attachments`. Each attachment carries a 0-based sequence number (`seq`) for ordering, deduplication, and targeted retry.
+
+**Payload:** `AttachmentPayload`
+
+```ts
+{
+  correlation_id: string;          // Required. Must match the preceding start_attachments.
+  seq: number;                     // Required. 0-based index of this attachment in the sequence.
+  type: "image" | "markdown";      // Required. The kind of content being attached.
+  body: string;                    // Required. Base64-encoded content.
+  name?: string;                   // Optional. Filename or human-readable label.
+}
+```
+
+**Fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `correlation_id` | Yes | Must match the `correlation_id` from the preceding `start_attachments`. The server rejects attachments with a mismatched or unknown correlation ID. |
+| `seq` | Yes | 0-based sequence number. Must satisfy `0 ≤ seq < count`. Used for ordering attachments when consumed, deduplication on retry, and identifying which attachment failed. |
 | `type` | Yes | `"image"` for raster images (PNG, JPEG, WebP, etc.) or `"markdown"` for Markdown text files. |
 | `body` | Yes | The file content encoded as a Base64 string. |
 | `name` | No | An optional filename or label — e.g. `"screenshot.png"`, `"notes.md"`. Useful for display and logging. |
 
-**Size constraint:** The `body` field (the Base64-encoded string) **must not** exceed `max_message_size_bytes` advertised in the `welcome` capabilities. Well-behaved clients validate the size locally before sending. The server will reject payloads that exceed the limit with an `error` event and discard the attachment.
+**Size constraint:** The `body` field **must not** exceed `max_message_size_bytes` advertised in the `welcome` capabilities. This is validated **per individual attachment**, not as a total across the sequence. Well-behaved clients validate the size locally before sending. The server rejects oversized attachments with an `error` event.
+
+**Server behaviour:**
+- If `correlation_id` does not match the active staging → emit `error`.
+- If `seq` is out of range (`< 0` or `≥ expected`) → emit `error`.
+- If `seq` is already present in the staging map (duplicate/retry) → **idempotent**: re-emit `attachment_ack` without double-storing.
+- If `body` exceeds `max_message_size_bytes` → emit `error`. The staging remains active but the sequence can never complete (count cannot be fulfilled). The client should treat this as a fatal error for the sequence.
+- Otherwise → store the attachment in the staging map keyed by `seq`, emit `attachment_ack({ correlation_id, seq })`.
+
+**Delivery model:** The client fires all N `attachment` events immediately without waiting for individual acks (fire-and-send). Acks are tracked asynchronously. Before emitting `message`, the client should verify all N acks have been received. If any ack is missing after a timeout, the client retries those specific `attachment` events (same `correlation_id` + `seq`) — the server deduplicates gracefully.
+
+---
+
+#### `message`
+
+**When to use:** Emit when the user submits a new message. The server will enqueue an agent run for the thread and begin streaming responses.
+
+**Payload:** `MessagePayload`
+
+```ts
+{
+  text: string;                          // Required. The user's message text.
+  context?: Record<string, any>;         // Optional. Inline context applied before the run.
+  attachment_correlation_id?: string;     // Optional. Ties this message to a preceding attachment sequence.
+}
+```
+
+**Design note:** `context` on `message` is the preferred way to send per-turn context because it is applied atomically with the message, avoiding a race between `set_context` and `message`. Use a standalone `set_context` only when you need to update context without sending a message (e.g. on app load).
+
+**Attachment correlation behaviour:**
+
+| Scenario | Server behaviour |
+|---|---|
+| `attachment_correlation_id` matches active staging AND all `count` attachments received | Consume attachments (ordered by `seq`), clear staging, forward to agent alongside message text. |
+| `attachment_correlation_id` matches active staging BUT count is incomplete | Emit `error`, discard staging, do **not** process the message. |
+| No `attachment_correlation_id` while staging is active | **Implicit cancel**: silently discard staging, process message as a plain text message (no attachments). |
+| `attachment_correlation_id` does not match active staging (or no staging exists) | **Implicit cancel**: silently discard any staging, process message as a plain text message. |
+
+This design means a user who stages attachments but then changes their mind and sends a plain message naturally cancels the attachment sequence — no explicit cancel event is needed.
 
 ---
 
@@ -224,10 +309,29 @@ The server validates the payload strictly with `parseLocalToolResponseEnvelope` 
 | Field | Description |
 |---|---|
 | `server_version` | Server protocol version. Store for diagnostics. |
-| `capabilities.max_message_size_bytes` | The maximum size, in bytes, of any single client-to-server payload. Applies in particular to the `body` field of `set_attachment`. Clients **must not** send messages exceeding this limit. |
+| `capabilities.max_message_size_bytes` | The maximum size, in bytes, of any single client-to-server payload. Applies in particular to the `body` field of each individual `attachment` event. Clients **must not** send payloads exceeding this limit. |
 | `capabilities.inactivity_timeout_ms` | The server's default inactivity timeout in milliseconds. Defaults to **600 000** (10 minutes) if not configured. See [Inactivity timeout](#inactivity-timeout). |
 
 Store `server_version` for diagnostics and `capabilities` for enforcing local constraints. Normal operation can continue after this event.
+
+---
+
+#### `attachment_ack`
+
+**When to receive:** After the server validates and stages an individual `attachment` event.
+
+**Payload:** `AttachmentAckPayload`
+
+```ts
+{
+  correlation_id: string;  // Echoes the correlation_id from the attachment.
+  seq: number;             // Echoes the seq from the attachment.
+}
+```
+
+**Idempotent:** If the client retries an attachment with the same `(correlation_id, seq)`, the server re-emits `attachment_ack` without double-storing. This makes retry logic safe across reconnections.
+
+**When to use:** Track received acks in a `Set<number>`. Before emitting `message`, verify all N acks are present. If any are missing after a timeout, retry those specific `attachment` events using their `correlation_id` + `seq`. On reconnect mid-sequence, re-emit `start_attachments` (which resets server staging) then re-send all unacked attachments.
 
 ---
 
