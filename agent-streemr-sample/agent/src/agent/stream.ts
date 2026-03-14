@@ -19,6 +19,7 @@ import {
   recipeSave,
   recipeLoad,
   recipeDelete,
+  recipeSetPhoto,
 } from "./tools/index.js";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,7 @@ const agent = createAgent({
     recipeSave,
     recipeLoad,
     recipeDelete,
+    recipeSetPhoto,
   ],
   checkpointer,
   systemPrompt: SYSTEM_PROMPT,
@@ -67,16 +69,32 @@ export const streamAgentResponse: AgentRunner<UserContext> = async function* (
   message,
   options,
 ) {
-  const { threadId, context } = options;
-  console.log(`[stream] thread=${threadId} message="${message.slice(0, 80)}${message.length > 80 ? "..." : ""}"`)
+  const { threadId, context, attachments } = options;
+  console.log(`[stream] thread=${threadId} message="${message.slice(0, 80)}${message.length > 80 ? "..." : ""}"`)  
 
   const userContent = buildContextualMessage(message, context);
   if (userContent !== message) {
     console.log(`[stream] context injected for thread=${threadId}:`, JSON.stringify(context));
   }
 
+  // Build message content — multimodal when image attachments are present.
+  const imageAttachments = attachments?.filter((a) => a.type === "image") ?? [];
+  let messageContent: string | Array<{ type: string; [k: string]: unknown }>;
+  if (imageAttachments.length > 0) {
+    messageContent = [
+      { type: "text", text: userContent },
+      ...imageAttachments.map((att) => ({
+        type: "image_url" as const,
+        image_url: { url: `data:image/jpeg;base64,${att.body}` },
+      })),
+    ];
+    console.log(`[stream] ${imageAttachments.length} image attachment(s) included for thread=${threadId}`);
+  } else {
+    messageContent = userContent;
+  }
+
   const tokenStream = await agent.stream(
-    { messages: [{ role: "user", content: userContent }] },
+    { messages: [{ role: "user", content: messageContent }] },
     {
       streamMode: "messages",
       configurable: buildLangChainConfig(options),

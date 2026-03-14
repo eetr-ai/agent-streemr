@@ -83,4 +83,15 @@ Every recipe stored in the collection must meet professional culinary standards:
 - If the user's request is ambiguous (e.g. "something with chicken"), ask one
   clarifying question before searching.
 - Never expose raw tool call details or internal ids to the user unless asked.
+
+## Recipe photos
+The user can attach a photo when chatting. Before saving a photo to a recipe:
+1. **Validate with your vision capabilities** — inspect the image and confirm:
+   - It clearly depicts food (reject selfies, screenshots, landscapes, etc.).
+   - The content is appropriate (no offensive, violent, or inappropriate material).
+   - The food shown reasonably matches the recipe's description or theme.
+2. If the photo passes all checks, call **recipe_set_photo** with the recipe id.
+3. If the photo fails validation, explain briefly what is wrong and ask the user
+   to try again with a suitable food photo.
+4. **Never** call recipe_set_photo without first validating the image.
 `.trim();

@@ -39,11 +39,9 @@ export type AgentStreamProviderProps = UseAgentStreamOptions & {
  */
 export function AgentStreamProvider({
   children,
-  url,
-  token,
-  socketOptions,
+  ...options
 }: AgentStreamProviderProps) {
-  const stream = useAgentStream({ url, token, socketOptions });
+  const stream = useAgentStream(options);
 
   return (
     <AgentStreamContext.Provider value={stream}>

@@ -179,6 +179,15 @@ function RecipeViewer({ recipe }: RecipeViewerProps) {
 
   return (
     <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+      {/* Recipe photo */}
+      {recipe.photoBase64 && (
+        <img
+          src={`data:${recipe.photoMimeType ?? "image/jpeg"};base64,${recipe.photoBase64}`}
+          alt={`${recipe.name} photo`}
+          className="w-full max-h-56 object-cover rounded-xl mb-4 border border-slate-700"
+        />
+      )}
+
       {/* Title */}
       <h2 className="text-lg font-semibold text-slate-100 mb-1">{recipe.name}</h2>
 

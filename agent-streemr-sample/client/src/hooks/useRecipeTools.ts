@@ -39,6 +39,7 @@ import {
 } from "../db/recipes";
 import { useToolApproval } from "../context/ToolApprovalContext";
 import { useRecipeContext } from "../context/RecipeContext";
+import { consumePhoto } from "./photoStaging";
 
 type AgentSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -53,6 +54,7 @@ const RECIPE_TOOLS = new Set([
   "recipe_save",
   "recipe_load",
   "recipe_delete",
+  "recipe_set_photo",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -342,6 +344,37 @@ export function useRecipeTools(socket: AgentSocket | null): void {
     const { id } = args as { id: string };
     await deleteRecipe(id);
     draftsRef.current.delete(id);
+    return { response_json: { ok: true, id } };
+  }, { allowList });
+
+  // recipe_set_photo ----------------------------------------------------------
+  useLocalToolHandler(socket, "recipe_set_photo", async (args) => {
+    const { id } = args as { id: string };
+    const photo = consumePhoto();
+    if (!photo) {
+      return { response_json: { ok: false, error: "No photo staged. The user must attach an image first." } };
+    }
+    const stored = await getRecipe(id);
+    const draft = draftsRef.current.get(id) ?? {};
+    const base: Recipe = stored ?? {
+      id,
+      name: "",
+      description: "",
+      ingredients: [],
+      instructions: "",
+      tags: [],
+      servings: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const toSave: Recipe = {
+      ...base,
+      ...draft,
+      id,
+      photoBase64: photo.base64,
+      photoMimeType: photo.mimeType,
+    };
+    await saveRecipe(toSave);
     return { response_json: { ok: true, id } };
   }, { allowList });
 

@@ -129,7 +129,7 @@ function InnerApp() {
 export default function App() {
   return (
     // token is empty string — the sample agent does not validate tokens
-    <AgentStreamProvider url={AGENT_URL} token="">
+    <AgentStreamProvider url={AGENT_URL} token="" inactivityTimeoutMs={60_000}>
       <ToolApprovalProvider>
         <RecipeProvider>
           <InnerApp />

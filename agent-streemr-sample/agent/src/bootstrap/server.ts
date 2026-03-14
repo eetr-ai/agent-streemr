@@ -10,18 +10,19 @@ import {
   LocalToolRegistry,
 } from "@eetr/agent-streemr";
 import { streamAgentResponse } from "../agent/index.js";
+import type { UserContext } from "../agent/userContext.js";
 
 // ---------------------------------------------------------------------------
-// Context type — blank for this sample (no local tools, no per-thread state)
+// Max message/attachment size — shared between Socket.io transport and the
+// agent-streemr protocol so the limits are aligned.
 // ---------------------------------------------------------------------------
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-type SampleContext = object;
+const MAX_MESSAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MiB
 
 // ---------------------------------------------------------------------------
 // Shared registry — no tools registered; useLocalToolFallback on the client
 // handles any stray tool calls automatically.
 // ---------------------------------------------------------------------------
-const localToolRegistry = new LocalToolRegistry<SampleContext>();
+const localToolRegistry = new LocalToolRegistry<UserContext>();
 
 // ---------------------------------------------------------------------------
 // Express + Socket.io setup
@@ -46,12 +47,13 @@ export function createApp() {
       origin: clientOrigin,
       methods: ["GET", "POST"],
     },
+    maxHttpBufferSize: MAX_MESSAGE_SIZE_BYTES,
   });
 
   // -------------------------------------------------------------------------
   // Wire createAgentSocketListener
   // -------------------------------------------------------------------------
-  createAgentSocketListener<SampleContext>({
+  createAgentSocketListener<UserContext>({
     io,
 
     // No auth — just require a non-empty installation_id in the handshake.
@@ -63,14 +65,27 @@ export function createApp() {
       return { threadId: installationId };
     },
 
-    // Empty context per thread.
-    createContext: (_threadId): SampleContext => ({}),
+    // Per-thread context — tracks selection state, etc.
+    createContext: (_threadId): UserContext => ({}),
 
     // Same runner for every thread — LangGraph manages per-thread memory
     // internally via MemorySaver keyed on configurable.thread_id.
     getAgentRunner: (_threadId) => streamAgentResponse,
 
     localToolRegistry,
+
+    // Merge client set_context payloads into the per-thread UserContext.
+    onContextUpdate: (ctx, data) => {
+      if ("selectedRecipeId" in data) {
+        ctx.selectedRecipeId = data.selectedRecipeId as string | null;
+      }
+    },
+
+    // Align the protocol-level max with the transport-level max.
+    maxMessageSizeBytes: MAX_MESSAGE_SIZE_BYTES,
+
+    // Server-wide inactivity timeout: 10 minutes.
+    inactivityTimeoutMs: 10 * 60 * 1000,
   });
 
   return { app, httpServer };

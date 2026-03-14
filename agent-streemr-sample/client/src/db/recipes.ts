@@ -29,6 +29,10 @@ export interface Recipe {
   instructions: string;
   tags: string[];
   servings?: string;
+  /** Base64-encoded recipe photo (validated by the agent as food before saving). */
+  photoBase64?: string;
+  /** MIME type of the stored photo, e.g. "image/jpeg". */
+  photoMimeType?: string;
   createdAt: number;
   updatedAt: number;
 }
