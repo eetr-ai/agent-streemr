@@ -16,7 +16,7 @@ final class ChatViewModel {
         let assetIdentifier: String?
     }
     var pendingAttachment: PendingAttachment? = nil
-    private var pendingSend: (text: String, attachment: PendingAttachment?)? = nil
+    private var pendingSend: (text: String, attachment: PendingAttachment?, context: [String: Any]?)? = nil
     private var statusObservationTask: Task<Void, Never>?
     private var messagesObservationTask: Task<Void, Never>?
     private var messageAttachmentPreviews: [String: Data] = [:]
@@ -40,18 +40,18 @@ final class ChatViewModel {
         return !stream.isStreaming && (!trimmed.isEmpty || hasAttachment)
     }
 
-    func send(using stream: AgentStream) {
+    func send(using stream: AgentStream, context: [String: Any]? = nil) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let att = pendingAttachment
         guard !text.isEmpty || att != nil else { return }
         inputText = ""
         pendingAttachment = nil
         if !stream.status.isConnected {
-            pendingSend = (text: text, attachment: att)
+            pendingSend = (text: text, attachment: att, context: context)
             reconnect(stream: stream)
             return
         }
-        sendToStream(stream, text: text, attachment: att)
+        sendToStream(stream, text: text, attachment: att, context: context)
     }
 
     func start(using stream: AgentStream) {
@@ -59,7 +59,7 @@ final class ChatViewModel {
             statusObservationTask = Task {
                 for await status in stream.statusPublisher.values {
                     if status.isConnected, let pending = pendingSend {
-                        sendToStream(stream, text: pending.text, attachment: pending.attachment)
+                        sendToStream(stream, text: pending.text, attachment: pending.attachment, context: pending.context)
                         pendingSend = nil
                     }
                 }
@@ -122,10 +122,15 @@ final class ChatViewModel {
         return [Attachment(type: type, body: pending.data.base64EncodedString(), name: pending.name)]
     }
 
-    private func sendToStream(_ stream: AgentStream, text: String, attachment: PendingAttachment?) {
+    private func sendToStream(
+        _ stream: AgentStream,
+        text: String,
+        attachment: PendingAttachment?,
+        context: [String: Any]?
+    ) {
         let previousMessageCount = stream.messages.count
         let attachments: [Attachment]? = attachment.map { makeAttachments(from: $0) }
-        stream.sendMessage(text, attachments: attachments)
+        stream.sendMessage(text, context: context, attachments: attachments)
 
         guard let attachment,
               stream.messages.count > previousMessageCount,

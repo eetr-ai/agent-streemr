@@ -5,6 +5,7 @@ import SwiftUI
 struct RecipeListView: View {
 
     @Binding var selection: String?
+    let createRecipe: () -> Void
 
     @Environment(\.recipeService) private var recipeService
     @State private var viewModel = RecipeListViewModel()
@@ -30,6 +31,14 @@ struct RecipeListView: View {
         }
         .navigationTitle("Recipes")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    createRecipe()
+                } label: {
+                    Label("New Recipe", systemImage: "plus")
+                }
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     viewModel.load(using: recipeService)

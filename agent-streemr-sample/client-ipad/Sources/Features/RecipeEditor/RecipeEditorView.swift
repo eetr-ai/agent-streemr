@@ -3,12 +3,18 @@ import Photos
 
 /// Displays the current recipe as a read-only document driven by local tools.
 struct RecipeEditorView: View {
+    @Environment(\.recipeService) private var recipeService
     @Environment(RecipeEditorViewModel.self) private var viewModel
+    @State private var newIngredient: String = ""
 
     var body: some View {
         Group {
             if let recipe = viewModel.recipe {
-                RecipeDocumentView(recipe: recipe)
+                RecipeDocumentView(
+                    recipe: recipe,
+                    isNewRecipe: viewModel.isNewRecipe,
+                    newIngredient: $newIngredient
+                )
             } else {
                 ContentUnavailableView(
                     "No Recipe Open",
@@ -19,6 +25,16 @@ struct RecipeEditorView: View {
         }
         .navigationTitle(viewModel.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if viewModel.canSave {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(viewModel.isNewRecipe ? "Save Recipe" : "Save Changes") {
+                        _ = try? viewModel.save(using: recipeService)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
         .alert("Error", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { _ in viewModel.dismissError() }
@@ -32,12 +48,18 @@ struct RecipeEditorView: View {
 
 private struct RecipeDocumentView: View {
     let recipe: Recipe
+    let isNewRecipe: Bool
+    @Binding var newIngredient: String
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                if isNewRecipe {
+                    UnsavedRecipeBanner()
+                }
+
                 RecipePhotoSection(assetIdentifier: recipe.photoAssetIdentifier)
-                RecipeHeaderView(recipe: recipe)
+                RecipeHeaderEditor(recipe: recipe)
 
                 if hasDescription {
                     RecipeSectionCard(title: "Description") {
@@ -45,7 +67,7 @@ private struct RecipeDocumentView: View {
                     }
                 }
 
-                RecipeIngredientsSection(ingredients: recipe.ingredients)
+                RecipeIngredientsEditor(recipe: recipe, newIngredient: $newIngredient)
                 RecipeDirectionsSection(directions: recipe.directions)
             }
             .padding(20)
@@ -57,14 +79,31 @@ private struct RecipeDocumentView: View {
     }
 }
 
-private struct RecipeHeaderView: View {
+private struct UnsavedRecipeBanner: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "square.and.arrow.down")
+                .foregroundStyle(Color.accentColor)
+            Text("This recipe is unsaved. Save it when you’re ready to keep it in your collection.")
+                .font(.subheadline)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct RecipeHeaderEditor: View {
     let recipe: Recipe
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(recipe.name.isEmpty ? "Untitled Recipe" : recipe.name)
-                .font(.largeTitle.weight(.bold))
-                .frame(maxWidth: .infinity, alignment: .leading)
+            TextField("Recipe Title", text: Binding(
+                get: { recipe.name },
+                set: { recipe.name = $0 }
+            ))
+            .font(.largeTitle.weight(.bold))
+            .textFieldStyle(.plain)
 
             HStack(spacing: 10) {
                 DetailPill(title: "Servings", value: "\(recipe.servings)")
@@ -76,16 +115,17 @@ private struct RecipeHeaderView: View {
     }
 }
 
-private struct RecipeIngredientsSection: View {
-    let ingredients: [String]
+private struct RecipeIngredientsEditor: View {
+    let recipe: Recipe
+    @Binding var newIngredient: String
 
     var body: some View {
         RecipeSectionCard(title: "Ingredients") {
-            if ingredients.isEmpty {
+            if recipe.ingredients.isEmpty {
                 EmptyRecipeSectionText(text: "No ingredients yet")
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(ingredients, id: \.self) { ingredient in
+                    ForEach(Array(recipe.ingredients.enumerated()), id: \.offset) { index, ingredient in
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "circle.fill")
                                 .font(.system(size: 7))
@@ -93,9 +133,28 @@ private struct RecipeIngredientsSection: View {
                                 .padding(.top, 6)
                             Text(ingredient)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                            Button(role: .destructive) {
+                                recipe.ingredients.remove(at: index)
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
+            }
+
+            HStack(spacing: 10) {
+                TextField("Add ingredient", text: $newIngredient)
+                    .textFieldStyle(.roundedBorder)
+
+                Button("Add") {
+                    let trimmed = newIngredient.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    recipe.ingredients.append(trimmed)
+                    newIngredient = ""
+                }
+                .buttonStyle(.borderedProminent)
             }
         }
     }

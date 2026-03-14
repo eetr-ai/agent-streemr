@@ -147,7 +147,8 @@ private struct FloatingChatWindow: View {
                                 .font(.headline)
                             ConnectionBadge(
                                 status: stream.status,
-                                inactiveCloseReason: stream.inactiveCloseReason
+                                inactiveCloseReason: stream.inactiveCloseReason,
+                                style: .compact
                             )
                         }
                         if toolApprovalService.pendingApprovals.isEmpty == false {
@@ -188,8 +189,14 @@ private struct FloatingChatWindow: View {
 }
 
 private struct ConnectionBadge: View {
+    enum Style {
+        case full
+        case compact
+    }
+
     let status: ConnectionStatus
     let inactiveCloseReason: String?
+    var style: Style = .full
 
     var body: some View {
         HStack(spacing: 6) {
@@ -217,6 +224,22 @@ private struct ConnectionBadge: View {
     }
 
     private var statusText: String {
+        if style == .compact {
+            switch status {
+            case .connected:
+                return "Connected"
+            case .connecting:
+                return "Connecting"
+            case .error:
+                return "Disconnected"
+            case .disconnected:
+                if let inactiveCloseReason, !inactiveCloseReason.isEmpty {
+                    return "Inactive"
+                }
+                return "Disconnected"
+            }
+        }
+
         switch status {
         case .connected:
             return "Connected"
@@ -243,18 +266,23 @@ private struct RecipeTabView: View {
             RecipeListView(selection: Binding(
                 get: { selectedRecipeState.selectedRecipeId },
                 set: { selectedRecipeState.selectedRecipeId = $0 }
-            ))
+            ), createRecipe: createRecipe)
         } detail: {
             if recipeEditorViewModel.hasOpenRecipe {
                 NavigationStack {
                     RecipeEditorView()
                 }
             } else {
-                ContentUnavailableView(
-                    "Select a Recipe",
-                    systemImage: "fork.knife",
-                    description: Text("Choose a recipe from the list to view or edit it.")
-                )
+                VStack(spacing: 18) {
+                    ContentUnavailableView(
+                        "Select a Recipe",
+                        systemImage: "fork.knife",
+                        description: Text("Choose a recipe from the list to view or edit it.")
+                    )
+
+                    Button("New Recipe", action: createRecipe)
+                        .buttonStyle(.borderedProminent)
+                }
             }
         }
         .onAppear {
@@ -263,5 +291,10 @@ private struct RecipeTabView: View {
         .onChange(of: selectedRecipeState.selectedRecipeId) { _, newId in
             recipeEditorViewModel.syncSelection(id: newId, using: recipeService)
         }
+    }
+
+    private func createRecipe() {
+        _ = recipeEditorViewModel.startNewRecipe()
+        selectedRecipeState.selectedRecipeId = nil
     }
 }

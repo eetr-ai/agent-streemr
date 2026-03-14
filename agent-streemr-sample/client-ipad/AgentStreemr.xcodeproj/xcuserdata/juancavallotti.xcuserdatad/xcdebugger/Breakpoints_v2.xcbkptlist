@@ -3,22 +3,4 @@
    uuid = "31E591E6-2014-4E20-9325-D2AFBAB4E932"
    type = "1"
    version = "2.0">
-   <Breakpoints>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "FC970B62-D3AD-42D6-8F25-DE495C658501"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "Sources/Features/RecipeEditor/Tools/RecipeEditorTools.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "247"
-            endingLineNumber = "247"
-            landmarkName = "registerRecipeEditorTools(on:recipeService:photoStagingService:attachmentReferenceStore:selectedRecipeState:recipeEditorViewModel:toolCallLog:)"
-            landmarkType = "9">
-         </BreakpointContent>
-      </BreakpointProxy>
-   </Breakpoints>
 </Bucket>

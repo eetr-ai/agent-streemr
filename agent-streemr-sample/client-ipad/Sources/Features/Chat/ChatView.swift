@@ -7,6 +7,7 @@ struct ChatView: View {
 
     @Environment(AgentStream.self) private var stream
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(RecipeEditorViewModel.self) private var recipeEditorViewModel
     @Environment(ToolApprovalService.self) private var toolApprovalService
     @Environment(\.photoStagingService) private var photoStagingService
     @Environment(\.attachmentReferenceStore) private var attachmentReferenceStore
@@ -102,7 +103,7 @@ struct ChatView: View {
                                 assetIdentifier: attachment.assetIdentifier
                             )
                         }
-                        viewModel.send(using: stream)
+                        viewModel.send(using: stream, context: currentChatContext)
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.title2)
@@ -139,6 +140,20 @@ struct ChatView: View {
             name: name,
             assetIdentifier: item.itemIdentifier
         )
+    }
+
+    private var currentChatContext: [String: Any]? {
+        guard let recipe = recipeEditorViewModel.recipe else { return nil }
+        return [
+            "surface": "recipe_editor",
+            "recipe": [
+                "id": recipe.id,
+                "name": recipe.name,
+                "isNew": recipeEditorViewModel.isNewRecipe,
+                "isUnsaved": recipeEditorViewModel.isNewRecipe,
+                "isSaved": !recipeEditorViewModel.isNewRecipe
+            ]
+        ]
     }
 }
 
@@ -240,27 +255,29 @@ private struct ThinkingPanel: View {
 }
 
 private struct TypingIndicator: View {
-    @State private var isAnimating = false
-
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0 ..< 3, id: \.self) { index in
-                Circle()
-                    .fill(Color.secondary)
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(isAnimating ? 1 : 0.55)
-                    .opacity(isAnimating ? 1 : 0.35)
-                    .animation(
-                        .easeInOut(duration: 0.55)
-                            .repeatForever()
-                            .delay(Double(index) * 0.14),
-                        value: isAnimating
-                    )
+        TimelineView(.animation) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+
+            HStack(spacing: 6) {
+                ForEach(0 ..< 3, id: \.self) { index in
+                    let phase = (time * 2.2) - (Double(index) * 0.22)
+                    let wave = (sin(phase * .pi) + 1) / 2
+
+                    Circle()
+                        .fill(Color.secondary)
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(0.58 + (wave * 0.42))
+                        .opacity(0.3 + (wave * 0.7))
+                        .offset(y: -wave * 3)
+                        .transaction { transaction in
+                            transaction.animation = .linear(duration: 0.12)
+                        }
+                }
             }
+            .padding(10)
+            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 10))
         }
-        .padding(10)
-        .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 10))
-        .onAppear { isAnimating = true }
     }
 }
 
