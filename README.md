@@ -211,6 +211,7 @@ Capabilities and UX:
 | [`agent-streemr-react`](./agent-streemr-react) | React hooks and context for connecting a UI to an agent-streemr server | ✅ Ready |
 | [`agent-streemr-swift`](./agent-streemr-swift) | Native Swift client for iOS, macOS, tvOS and watchOS (Swift Package Manager) | ✅ Ready |
 | [`agent-streemr-sample`](./agent-streemr-sample) | Full-stack reference app: LangGraph agent + React/Vite chat UI with recipe management | ✅ Ready |
+| [`agent-streemr-sample/client-ipad`](./agent-streemr-sample/client-ipad) | Native SwiftUI iPad sample app demonstrating the full protocol with the same cooking copilot | ✅ Ready |
 
 ---
 
@@ -284,7 +285,7 @@ createAgentSocketListener({
   },
   createContext: (_threadId) => ({ userId: "unknown" }),
   localToolRegistry: registry,
-  getAgentRunner: (_threadId) =>
+  getAgentRunner: (threadId, agentId?) =>
     async (message, { threadId, emitLocalTool, emitLocalToolFireAndForget, localToolRegistry }) => {
       // Build your LangGraph agent here
       const stream = await agent.stream(
@@ -365,7 +366,7 @@ Add the package via Swift Package Manager (Xcode → **File → Add Package Depe
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/eetr-ai/agent-streemr", from: "0.1.1"),
+    .package(url: "https://github.com/eetr-ai/agent-streemr", from: "0.1.4"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
@@ -384,7 +385,10 @@ See [agent-streemr-swift/README.md](./agent-streemr-swift/README.md) for the ful
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `message` | `{ text }` | Trigger an agent run |
+| `client_hello` | `{ version, agent_id?, inactivity_timeout_ms? }` | Handshake sent on connect; requests optional agent routing and inactivity timeout |
+| `message` | `{ text, context?, attachment_correlation_id? }` | Trigger an agent run; optionally references staged attachments |
+| `start_attachments` | `{ correlation_id, count }` | Begin a multi-file upload sequence before sending a message |
+| `attachment` | `{ correlation_id, seq, type, body, name? }` | One attachment in the sequence (Base64-encoded body); resets inactivity timer |
 | `local_tool_response` | `{ request_id, tool_name, response_json? \| allowed:false \| notSupported:true \| error:true }` | Reply to a `local_tool` request |
 | `clear_context` | — | Reset conversation history for this thread |
 
@@ -392,9 +396,12 @@ See [agent-streemr-swift/README.md](./agent-streemr-swift/README.md) for the ful
 
 | Event | Payload | Description |
 |-------|---------|-------------|
+| `welcome` | `{ server_version, capabilities: { max_message_size_bytes, inactivity_timeout_ms } }` | Handshake reply with negotiated server capabilities |
 | `internal_token` | `{ token }` | Agent reasoning token (thinking panel) |
-| `local_tool` | `{ request_id, tool_name, args_json }` | Delegate work to client |
+| `local_tool` | `{ request_id, tool_name, args_json, tool_type, expires_at? }` | Delegate work to client |
+| `attachment_ack` | `{ correlation_id, seq }` | Idempotent confirmation that one attachment was staged |
 | `agent_response` | `{ chunk?, done }` | Final assistant reply |
+| `inactive_close` | `{ reason }` | Server is closing the connection due to inactivity |
 | `context_cleared` | `{ message }` | Broadcast: context was reset |
 | `error` | `{ message }` | Error notification |
 
@@ -510,11 +517,13 @@ createAgentSocketListener({
   io,                     // Socket.io Server instance
   authenticate,           // (socket) => Promise<{ threadId, ...} | null>
   createContext,          // (threadId) => TContext  — called once per new thread
-  getAgentRunner,         // (threadId) => AgentRunner<TContext>
+  getAgentRunner,         // (threadId, agentId?) => AgentRunner<TContext>
   localToolRegistry,      // LocalToolRegistry<TContext> instance
   buildFollowUpMessage?,  // custom follow-up message builder (optional)
   onError?,               // custom error handler (optional; default: socket.emit("error"))
   localToolTtlMs?,        // TTL for awaiting entries (default: 30 000 ms)
+  maxMessageSizeBytes?,   // max size for messages and attachments (default: 5 MiB)
+  inactivityTimeoutMs?,   // server-side inactivity cap; emits inactive_close then disconnects
 });
 ```
 

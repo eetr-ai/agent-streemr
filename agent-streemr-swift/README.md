@@ -30,7 +30,7 @@ Swift 5.9+ / Xcode 15+.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/your-org/agent-streemr", from: "1.0.0"),
+    .package(url: "https://github.com/eetr-ai/agent-streemr", from: "0.1.4"),
 ],
 targets: [
     .target(
@@ -42,8 +42,7 @@ targets: [
 ]
 ```
 
-> **Local development:** if you have the monorepo checked out alongside your app,
-> use a local path dependency instead:
+> **Important:** Swift Package Manager resolves versions from **git tags**. SPM will only discover a release once the repository has a matching tag (e.g. `v0.1.4`) pushed to the remote. If you are working locally before the tag is published, use a local path dependency instead:
 >
 > ```swift
 > .package(path: "../agent-streemr/agent-streemr-swift")
@@ -60,7 +59,10 @@ import AgentStreemrSwift
 
 let config = AgentStreamConfiguration(
     url: URL(string: "https://api.example.com")!,
-    token: bearerJWT          // see your auth flow
+    token: bearerJWT,                    // see your auth flow
+    agentId: nil,                        // optional: route to a specific agent on the server
+    inactivityTimeoutMs: 60_000,         // optional: request a 60 s inactivity timeout
+    attachmentAckTimeoutSeconds: 10.0    // optional: per-attachment ack wait (default 10 s)
 )
 ```
 
@@ -108,6 +110,10 @@ stream.sendMessage("Hello!")
 
 // With optional inline context for this turn:
 stream.sendMessage("What's the weather?", context: ["location": "Buenos Aires"])
+
+// With attachments (performs multi-step upload handshake automatically):
+let attachment = Attachment(type: .image, body: base64ImageString, name: "photo.jpg")
+try await stream.sendMessage("Here is a photo.", attachments: [attachment])
 ```
 
 ### 5. Display conversation
@@ -150,6 +156,8 @@ All properties are `@MainActor`-isolated and observable via `@Observable`.
 | `isWorking` | `Bool` | `true` while the server queue is processing (includes tool calls) |
 | `internalThought` | `String` | Accumulated reasoning tokens; reset on each `sendMessage` |
 | `serverVersion` | `ProtocolVersion?` | Protocol version reported after handshake |
+| `serverCapabilities` | `WelcomeCapabilities?` | Server capabilities (`maxMessageSizeBytes`, `inactivityTimeoutMs`) received after handshake |
+| `inactiveCloseReason` | `String?` | Set when the server closes the connection due to inactivity; cleared on reconnect |
 
 ### `ConnectionStatus`
 
@@ -283,6 +291,57 @@ requests.
 
 ---
 
+## Attachment uploads
+
+Use the `Attachment` struct to send files alongside a message. `sendMessage(_:context:attachments:)` performs the full protocol handshake (`start_attachments` → N × `attachment` → wait for acks → `message`) automatically:
+
+```swift
+import AgentStreemrSwift
+
+// Build an Attachment from image data
+let imageData: Data = ...   // e.g. UIImage compressed to JPEG
+let attachment = Attachment(
+    type: .image,
+    body: imageData.base64EncodedString(),
+    name: "recipe-photo.jpg"
+)
+
+// Send — handshake is handled internally; throws AgentStreemrError.attachmentAckTimeout on timeout
+try await stream.sendMessage("Here's a photo of the dish.", attachments: [attachment])
+```
+
+The upload respects `attachmentAckTimeoutSeconds` (default `10.0`) per attachment and is gated by the server's `maxMessageSizeBytes` capability.
+
+---
+
+## Inactivity timeout
+
+When the server closes the connection due to inactivity it emits `inactive_close`. `AgentStream` captures the reason in `inactiveCloseReason` and transitions to `.disconnected`:
+
+```swift
+struct InactivityBanner: View {
+    @Environment(AgentStream.self) private var stream
+
+    var body: some View {
+        if let reason = stream.inactiveCloseReason {
+            VStack {
+                Text("Session ended: \(reason)")
+                Button("Reconnect") {
+                    stream.connect(threadId: savedThreadId)
+                }
+            }
+            .padding()
+            .background(Color.yellow.opacity(0.2))
+            .cornerRadius(8)
+        }
+    }
+}
+```
+
+`inactiveCloseReason` is cleared automatically on the next `connect(threadId:)` call.
+
+---
+
 ## Disconnecting
 
 ```swift
@@ -305,4 +364,4 @@ stream.disconnect()
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE). Copyright 2026 Juan Alberto Lopez Cavallotti.

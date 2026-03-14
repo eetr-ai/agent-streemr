@@ -411,6 +411,54 @@ function ChatApp({ deviceId }: { deviceId: string }) {
 
 ---
 
+## Attachment uploads
+
+Pass an array of `Attachment` objects as the third argument to `sendMessage`. The hook automatically performs the full multi-step handshake (`start_attachments` → N × `attachment` → wait for acks → `message`) before the agent run begins:
+
+```tsx
+import type { Attachment } from "@eetr/agent-streemr-react";
+
+// Convert a File to base64, then send with message
+async function sendWithImage(file: File) {
+  const body = await fileToBase64(file);
+  const attachment: Attachment = { type: "image", body, name: file.name };
+  sendMessage("Here is a photo of my dish.", undefined, [attachment]);
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+```
+
+The upload respects `attachmentAckTimeoutMs` (default 10 s per attachment). The server enforces `maxMessageSizeBytes` on each attachment body and rejects oversized uploads.
+
+---
+
+## Inactivity timeout
+
+When the server closes a connection due to inactivity it emits `inactive_close` before disconnecting. The hook captures the reason in `inactiveCloseReason` and transitions `status` to `"disconnected"`:
+
+```tsx
+const { inactiveCloseReason, connect, status } = useAgentStream({ url, token });
+
+// Show a banner when the server closed the connection due to inactivity
+{inactiveCloseReason && (
+  <div className="banner">
+    Session ended: {inactiveCloseReason}
+    <button onClick={() => connect(threadId)}>Reconnect</button>
+  </div>
+)}
+```
+
+`inactiveCloseReason` is cleared automatically on the next `connect()` call.
+
+---
+
 ## API reference
 
 ### `useAgentStream(options)`
@@ -421,6 +469,9 @@ function ChatApp({ deviceId }: { deviceId: string }) {
 |---|---|---|
 | `url` | `string` | Socket.io server URL |
 | `token` | `string` | Bearer JWT passed as `auth.token` |
+| `agentId?` | `string` | Optional agent identifier forwarded in `client_hello` for server-side routing |
+| `inactivityTimeoutMs?` | `number` | Requested inactivity timeout sent to the server (0 = no timeout) |
+| `attachmentAckTimeoutMs?` | `number` | Per-attachment ack wait before upload fails (default: 10 000 ms) |
 | `socketOptions?` | `Partial<ManagerOptions & SocketOptions>` | Extra Socket.io options |
 
 **Returns:** `UseAgentStreamResult`
@@ -429,13 +480,15 @@ function ChatApp({ deviceId }: { deviceId: string }) {
 |---|---|---|
 | `connect` | `(threadId: string) => void` | Open the socket; maps `threadId` → `auth.installation_id` |
 | `disconnect` | `() => void` | Disconnect and reset all state |
-| `sendMessage` | `(text: string, topicName?: string) => void` | Optimistic send |
+| `sendMessage` | `(text: string, context?: Record<string, any>, attachments?: Attachment[]) => void` | Optimistic send; performs multi-step upload handshake when attachments are provided |
 | `clearContext` | `() => void` | Emit `clear_context`; wipes local messages on confirmation |
 | `setContext` | `(data: Record<string, any>) => void` | Emit `set_context`; server calls `onContextUpdate` with the data |
 | `messages` | `AgentMessage[]` | Conversation history |
 | `status` | `ConnectionStatus` | `"disconnected" \| "connecting" \| "connected" \| "error"` |
 | `internalThought` | `string` | Accumulated reasoning tokens for the current turn |
 | `isStreaming` | `boolean` | `true` while an assistant message is being streamed |
+| `serverCapabilities` | `{ max_message_size_bytes: number; inactivity_timeout_ms: number } \| undefined` | Capabilities reported by the server after handshake |
+| `inactiveCloseReason` | `string \| null` | Set when the server closes the connection due to inactivity; cleared on reconnect |
 | `error` | `string \| null` | Last error message |
 | `socket` | `Socket \| null` | Raw typed Socket.io socket (for `useLocalToolHandler`) |
 
@@ -492,6 +545,12 @@ type AgentMessage = {
 };
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
+
+type Attachment = {
+  type: "image" | "markdown";
+  body: string;   // Base64-encoded content
+  name?: string;  // Optional filename
+};
 
 type LocalToolHandlerResult =
   | { response_json: object }

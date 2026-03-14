@@ -89,6 +89,58 @@ Key entry points:
 
 ---
 
+## iPad native client
+
+`client-ipad/` is a native SwiftUI iPad app that reimplements the same cooking copilot as the React client using `AgentStreemrSwift`. It serves as a reference for building native Apple-platform clients with full protocol support.
+
+### What it demonstrates
+
+| Feature | Details |
+|---------|---------|
+| Real-time streaming | Chat responses stream incrementally as the agent writes them |
+| Thinking panel | Agent reasoning tokens displayed in a collapsible section |
+| Local tools | All recipe tools (`recipe_list`, `recipe_create`, `recipe_save`, etc.) invoked from the server and executed on device |
+| Tool approval UI | Inline approval cards per tool call, with "Remember for this tool" persistence via UserDefaults |
+| Photo attachments | Photos staged from the camera roll and uploaded via the multi-step attachment protocol |
+| Inactivity timeout | Reconnect prompt shown when the server closes the connection due to inactivity |
+| Protocol event log | Dedicated tab showing all raw socket events for debugging |
+| SwiftData persistence | Recipes stored in SwiftData, fully local — never sent to the server |
+| Floating chat window | Draggable chat card anchored to the bottom-right, collapsible to a button |
+
+### Architecture
+
+```
+client-ipad/
+├── Sources/
+│   ├── App/
+│   │   ├── AgentStreemrApp.swift   # @main, creates AgentStream + all services
+│   │   └── ContentView.swift       # TabView: Recipes | Protocol Log; floating chat
+│   ├── Features/
+│   │   ├── RecipeList/             # Master-detail recipe browser + editor
+│   │   └── Chat/                   # Chat UI, tool approval cards, tool call log
+│   └── Services/
+│       ├── RecipeService.swift     # SwiftData CRUD wrapper
+│       ├── PhotoStagingService.swift       # Stages camera-roll photos for upload
+│       └── AttachmentReferenceStore.swift  # Tracks correlation IDs across uploads
+└── AgentStreemr.xcodeproj/
+```
+
+### Running on a physical iPad
+
+The app connects to `http://localhost:8080` by default. To test on a physical device change the URL to your Mac's LAN IP address in `AgentStreemrApp.swift`:
+
+```swift
+AgentStreamConfiguration(
+    url: URL(string: "http://192.168.1.x:8080")!,
+    token: "",
+    inactivityTimeoutMs: 60_000
+)
+```
+
+The iPad app references `AgentStreemrSwift` via a local Swift Package Manager path dependency (no separate install step required when working inside the monorepo).
+
+---
+
 ## Where the data lives
 
 ```mermaid

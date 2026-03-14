@@ -63,25 +63,33 @@ io.on("connection", createAgentSocketListener({
 httpServer.listen(3000);
 ```
 
-## Agent stream events (server → client)
+## Protocol events
+
+> See the [main README](../README.md#socket-protocol) for the full protocol reference. The tables below list the events this package defines.
+
+### Client → Server
 
 | Event | Payload | Description |
 |---|---|---|
-| `agent:stream` | `AgentStreamEvent` | Streamed token or complete message chunk from the agent |
-| `agent:error` | `{ message: string }` | Unrecoverable error during agent execution |
-| `local_tool:call` | `LocalToolCallPayload` | Agent is requesting the client execute a local tool |
+| `client_hello` | `{ version, agent_id?, inactivity_timeout_ms? }` | Handshake; request optional agent routing and inactivity timeout |
+| `message` | `{ text, context?, attachment_correlation_id? }` | Trigger an agent run |
+| `start_attachments` | `{ correlation_id, count }` | Begin a multi-file upload sequence |
+| `attachment` | `{ correlation_id, seq, type, body, name? }` | One attachment (Base64-encoded) |
+| `local_tool_response` | `{ request_id, tool_name, response_json? \| allowed:false \| notSupported:true \| error:true }` | Reply to a `local_tool` request |
+| `clear_context` | — | Reset conversation history for this thread |
 
-## Local tool response (client → server)
-
-| Event | Payload |
-|---|---|
-| `local_tool:response` | `LocalToolResponsePayload` |
-
-## Context update (client → server)
+### Server → Client
 
 | Event | Payload | Description |
 |---|---|---|
-| `set_context` | `SetContextPayload` | Push a JSON object to the agent's per-thread context before the next run |
+| `welcome` | `{ server_version, capabilities: { max_message_size_bytes, inactivity_timeout_ms } }` | Handshake reply with server capabilities |
+| `internal_token` | `{ token }` | Agent reasoning token (thinking panel) |
+| `local_tool` | `{ request_id, tool_name, args_json, tool_type, expires_at? }` | Delegate work to client |
+| `attachment_ack` | `{ correlation_id, seq }` | Idempotent confirmation of one staged attachment |
+| `agent_response` | `{ chunk?, done }` | Final assistant reply |
+| `inactive_close` | `{ reason }` | Connection closing due to inactivity timeout |
+| `context_cleared` | `{ message }` | Broadcast: context was reset |
+| `error` | `{ message }` | Error notification |
 
 Response statuses: `"success"` · `"denied"` · `"not_supported"` · `"error"`
 
@@ -101,9 +109,15 @@ Creates a Socket.io `connection` handler. Options:
 
 | Property | Type | Description |
 |---|---|---|
-| `authenticate` | `(socket) => Promise<AuthResult<TContext>>` | Verify the connecting client; return `{ success: false }` to reject |
-| `runner` | `AgentRunner<TContext>` | Called for each incoming `agent:message` event |
-| `onContextUpdate?` | `(context: TContext, data: Record<string, any>, threadId: string) => void` | Called when a client emits `set_context`; mutate `context` in-place to surface data to the agent |
+| `authenticate` | `(socket) => Promise<{ threadId, ... } \| null>` | Verify the connecting client; return `null` to reject |
+| `createContext` | `(threadId) => TContext` | Called once per new thread to create the mutable context |
+| `getAgentRunner` | `(threadId, agentId?) => AgentRunner<TContext>` | Returns the runner for a thread; `agentId` enables per-agent routing |
+| `localToolRegistry` | `LocalToolRegistry<TContext>` | Registry instance for dispatching local tool responses |
+| `buildFollowUpMessage?` | `(toolName, responseJson) => string` | Custom follow-up message builder |
+| `onError?` | `(err, socket) => void` | Custom error handler (default: `socket.emit("error")`) |
+| `localToolTtlMs?` | `number` | TTL for sync-awaiting entries (default: 30 000 ms) |
+| `maxMessageSizeBytes?` | `number` | Max allowed size for messages and attachments (default: 5 MiB) |
+| `inactivityTimeoutMs?` | `number` | Server-side inactivity cap; emits `inactive_close` then disconnects |
 
 `onContextUpdate` example:
 
