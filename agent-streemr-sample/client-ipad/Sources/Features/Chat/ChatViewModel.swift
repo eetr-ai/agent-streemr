@@ -9,32 +9,76 @@ final class ChatViewModel {
     var inputText: String = ""
     private(set) var threadId: String
 
+    struct PendingAttachment {
+        let data: Data
+        let mimeType: String
+        let name: String
+    }
+    var pendingAttachment: PendingAttachment? = nil
+    private var pendingSend: (text: String, attachment: PendingAttachment?)? = nil
+
     private let threadIdKey = "agent_streemr_thread_id"
 
     init() {
-        if let stored = UserDefaults.standard.string(forKey: "agent_streemr_thread_id") {
+        if let stored = UserDefaults.standard.string(forKey: threadIdKey) {
             threadId = stored
         } else {
             let id = UUID().uuidString
-            UserDefaults.standard.set(id, forKey: "agent_streemr_thread_id")
+            UserDefaults.standard.set(id, forKey: threadIdKey)
             threadId = id
         }
     }
 
     func canSend(stream: AgentStream) -> Bool {
-        stream.status.isConnected
-            && !stream.isStreaming
-            && !inputText.trimmingCharacters(in: .whitespaces).isEmpty
+        let trimmed = inputText.trimmingCharacters(in: .whitespaces)
+        let isDisconnected = !stream.status.isConnected
+        return (!stream.isStreaming && trimmed.count > 0 && (stream.status.isConnected || isDisconnected))
     }
 
     func send(using stream: AgentStream) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let att = pendingAttachment
         inputText = ""
-        Task { try? await stream.sendMessage(text) }
+        pendingAttachment = nil
+        if !stream.status.isConnected {
+            pendingSend = (text: text, attachment: att)
+            reconnect(stream: stream)
+            return
+        }
+        Task {
+            let attachments: [Attachment]? = att.map {
+                [Attachment(type: $0.mimeType, body: $0.data.base64EncodedString(), name: $0.name)]
+            }
+            try? await stream.sendMessage(text, attachments: attachments)
+        }
     }
 
     func connect(to stream: AgentStream) {
         stream.connect(threadId: threadId)
+        Task {
+            for await status in stream.statusPublisher.values {
+                if status.isConnected, let pending = pendingSend {
+                    let attachments: [Attachment]? = pending.attachment.map {
+                        [Attachment(type: $0.mimeType, body: $0.data.base64EncodedString(), name: $0.name)]
+                    }
+                    try? await stream.sendMessage(pending.text, attachments: attachments)
+                    pendingSend = nil
+                }
+            }
+        }
+    }
+
+    func reconnect(stream: AgentStream) {
+        stream.connect(threadId: threadId)
+    }
+
+    // Attachment helper: stage photo from PhotosPickerItem
+    @MainActor
+    func stagePhoto(item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        let mimeType = "image/jpeg" // TODO: detect type
+        let name = item.itemIdentifier ?? "photo.jpg"
+        pendingAttachment = PendingAttachment(data: data, mimeType: mimeType, name: name)
     }
 }

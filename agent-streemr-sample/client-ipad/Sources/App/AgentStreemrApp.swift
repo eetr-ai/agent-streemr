@@ -8,7 +8,7 @@ struct AgentStreemrApp: App {
         repository: SwiftDataRecipeRepository()
     )
 
-    /// Placeholder configuration — replace URL and token before connecting.
+    /// Placeholder configuration  replace URL and token before connecting.
     @State private var stream = AgentStream(
         configuration: AgentStreamConfiguration(
             url: URL(string: "http://localhost:3000")!,
@@ -16,11 +16,14 @@ struct AgentStreemrApp: App {
         )
     )
 
+    @State private var toolApprovalService = ToolApprovalService()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(\.recipeService, recipeService)
                 .environment(stream)
+                .environment(toolApprovalService)
         }
     }
 }

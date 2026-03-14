@@ -98,6 +98,14 @@ public final class AgentStream {
     /// Pending attachment ack waiters: correlationId → (remainingSeqs, resolve, reject).
     private var pendingAttachmentAcks: [String: (pending: Set<Int>, resolve: () -> Void, reject: (Error) -> Void)] = [:]
 
+    // MARK: - Tool Approval Integration
+
+    private let _localToolSubject = PassthroughSubject<LocalToolPayload, Never>()
+    /// Publishes every incoming local tool request for UI approval.
+    public var localToolPublisher: AnyPublisher<LocalToolPayload, Never> {
+        _localToolSubject.eraseToAnyPublisher()
+    }
+
     // MARK: - Init
 
     public init(configuration: AgentStreamConfiguration) {
@@ -269,6 +277,18 @@ public final class AgentStream {
         )
     }
 
+    /// Respond to a local tool request (approval/denial).
+    public func respondToLocalTool(requestId: String, toolName: String, approved: Bool) {
+        var dict: [String: Any] = ["request_id": requestId, "tool_name": toolName]
+        if approved {
+            dict["response_json"] = [:]
+        } else {
+            dict["allowed"] = false
+        }
+        socket?.emit(SocketEvent.localToolResponse, with: [dict])
+        emitProtocolEvent(SocketEvent.localToolResponse, direction: .outgoing, rawData: [dict])
+    }
+
     // MARK: - Protocol Event Helper
 
     /// Fires a `ProtocolEventRecord` on `_protocolEventSubject`.
@@ -315,24 +335,14 @@ public final class AgentStream {
                 } else if let str = data.first as? String {
                     message = str
                 } else {
-                    message = "Connection error"
+                    message = "Unknown connection error"
                 }
-                self?.emitProtocolEvent(SocketEvent.connectError, direction: .incoming, rawData: [["message": message]])
                 self?.handleConnectError(message)
             }
         }
-        socket.on(SocketEvent.welcome) { [weak self] data in
-            Task { @MainActor [weak self] in
-                guard let payload = decodeSocketData(WelcomePayload.self, from: data) else { return }
-                self?.serverVersion = payload.serverVersion
-                self?.serverCapabilities = payload.capabilities
-                self?.emitProtocolEvent(SocketEvent.welcome, direction: .incoming, rawData: data)
-                self?.publishAll()
-            }
-        }
         socket.on(SocketEvent.inactiveClose) { [weak self] data in
+            guard let payload = decodeSocketData(InactiveClosePayload.self, from: data) else { return }
             Task { @MainActor [weak self] in
-                guard let payload = decodeSocketData(InactiveClosePayload.self, from: data) else { return }
                 self?.inactiveCloseReason = payload.reason
                 self?.status = .disconnected
                 self?.isStreaming = false
@@ -407,26 +417,6 @@ public final class AgentStream {
                 self?.isStreaming = false
                 self?.emitProtocolEvent(SocketEvent.error, direction: .incoming, rawData: data)
                 self?.publishAll()
-            }
-        }
-        socket.on(SocketEvent.localTool) { [weak self] data in
-            guard let payload = LocalToolPayload.decode(from: data) else { return }
-            let capturedSocket = socket
-            Task { @MainActor [weak self] in
-                self?.emitProtocolEvent(SocketEvent.localTool, direction: .incoming, rawData: data)
-                if let coordinator = self?.localToolCoordinator {
-                    await coordinator.handle(payload, socket: capturedSocket)
-                    return
-                }
-                // React parity: when no specific handler is registered, non-fire_and_forget
-                // requests still receive a fallback notSupported response.
-                if payload.toolType != .fireAndForget {
-                    capturedSocket.emit(SocketEvent.localToolResponse, with: [[
-                        "request_id": payload.requestId,
-                        "tool_name": payload.toolName,
-                        "notSupported": true
-                    ]])
-                }
             }
         }
         socket.on(SocketEvent.localToolResponseAck) { [weak self] data in

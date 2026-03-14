@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Displays a scrollable list of all saved recipes.
-/// Tapping a row navigates to `RecipeEditorView` for that recipe.
+/// Sidebar list of all saved recipes. Selecting a row updates `selection`
+/// so that `RecipeBrowserView` can display the appropriate detail panel.
 struct RecipeListView: View {
+
+    @Binding var selection: String?
 
     @Environment(\.recipeService) private var recipeService
     @State private var viewModel = RecipeListViewModel()
@@ -16,12 +18,11 @@ struct RecipeListView: View {
                     description: Text("Ask the agent to create one for you.")
                 )
             } else {
-                List(viewModel.recipes) { recipe in
-                    NavigationLink(value: recipe.id) {
-                        RecipeRowView(recipe: recipe)
-                    }
+                List(viewModel.recipes, selection: $selection) { recipe in
+                    RecipeRowView(recipe: recipe)
+                        .tag(recipe.id)
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.sidebar)
             }
         }
         .navigationTitle("Recipes")
@@ -43,15 +44,37 @@ private struct RecipeRowView: View {
     let recipe: Recipe
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(recipe.name.isEmpty ? "Untitled Recipe" : recipe.name)
                 .font(.headline)
             if !recipe.tags.isEmpty {
-                Text(recipe.tags.joined(separator: ", "))
-                    .font(.caption)
+                TagChipRow(tags: recipe.tags)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Tag Chips
+
+private struct TagChipRow: View {
+    let tags: [String]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(tags.prefix(4), id: \.self) { tag in
+                Text(tag)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+            }
+            if tags.count > 4 {
+                Text("+\(tags.count - 4)")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 2)
     }
 }

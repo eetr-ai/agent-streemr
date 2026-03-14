@@ -3,12 +3,16 @@ name: AgentStreemr
 options:
   bundleIdPrefix: com.eetr
   deploymentTarget:
-    iOS: "26.3"
+    iOS: "26.0"
   defaultConfig: Debug
 
 packages:
   AgentStreemrSwift:
     path: ../../agent-streemr-swift
+
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: 2.4.0
 
 targets:
   AgentStreemr:
@@ -26,6 +30,8 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
     dependencies:
       - package: AgentStreemrSwift
+      - package: MarkdownUI
+        product: MarkdownUI
     info:
       path: Supporting Files/Info.plist
       properties:

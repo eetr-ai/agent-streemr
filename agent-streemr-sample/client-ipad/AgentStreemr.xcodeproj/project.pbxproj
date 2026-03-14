@@ -33,7 +33,7 @@
 
 /* Begin PBXFileReference section */
 		155088FDD8582640E15601E5 /* RecipeEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeEditorViewModel.swift; sourceTree = "<group>"; };
-		279A55D7A0D1D83A86D2CC17 /* AgentStreemr.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AgentStreemr.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		279A55D7A0D1D83A86D2CC17 /* AgentStreemr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentStreemr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3572085D69769143570AFE0B /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		3AB36C0F09B9DCD1B44333C9 /* agent-streemr-swift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "agent-streemr-swift"; path = "../../agent-streemr-swift"; sourceTree = SOURCE_ROOT; };
 		3B67389FF28639FF67D335E5 /* ToolCallLogTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallLogTools.swift; sourceTree = "<group>"; };
@@ -256,8 +256,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = 68FAB6DEE333B4D8BDD0021B /* Build configuration list for PBXProject "AgentStreemr" */;
 			developmentRegion = en;
@@ -374,8 +372,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = "Supporting Files/Info.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -393,8 +395,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = "Supporting Files/Info.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

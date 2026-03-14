@@ -10,12 +10,7 @@ struct ContentView: View {
                 }
             }
             Tab("Recipes", systemImage: "fork.knife") {
-                NavigationStack {
-                    RecipeListView()
-                        .navigationDestination(for: String.self) { recipeId in
-                            RecipeEditorView(recipeId: recipeId)
-                        }
-                }
+                RecipeBrowserView()
             }
             Tab("Tool Calls", systemImage: "wrench.and.screwdriver") {
                 NavigationStack {

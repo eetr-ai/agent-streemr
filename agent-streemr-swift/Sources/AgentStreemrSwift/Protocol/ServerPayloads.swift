@@ -16,9 +16,9 @@ func decodeSocketData<T: Decodable>(_ type: T.Type, from data: [Any]) -> T? {
 
 // MARK: - welcome
 
-struct WelcomeCapabilities: Decodable {
-    let maxMessageSizeBytes: Int
-    let inactivityTimeoutMs: Int
+public struct WelcomeCapabilities: Decodable, Sendable {
+    public let maxMessageSizeBytes: Int
+    public let inactivityTimeoutMs: Int
 }
 
 struct WelcomePayload: Decodable {
