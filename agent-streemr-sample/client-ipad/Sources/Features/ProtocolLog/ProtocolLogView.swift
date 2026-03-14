@@ -5,6 +5,7 @@ import AgentStreemrSwift
 /// Useful for debugging.
 struct ProtocolLogView: View {
 
+    @Environment(AgentStream.self) private var stream
     @State private var viewModel = ProtocolLogViewModel()
 
     var body: some View {
@@ -24,6 +25,7 @@ struct ProtocolLogView: View {
             }
         }
         .navigationTitle("Protocol Log")
+        .task { viewModel.observe(stream: stream) }
         .toolbar {
             ToolbarItem(placement: .destructiveAction) {
                 Button("Clear", role: .destructive) { viewModel.clear() }
@@ -41,6 +43,9 @@ private struct ProtocolLogRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
+                Text(entry.direction.rawValue)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(entry.direction == .incoming ? Color.green : Color.blue)
                 Text(entry.eventName)
                     .fontWeight(.semibold)
                     .foregroundStyle(.accent)

@@ -58,6 +58,7 @@ public final class AgentStream {
     private let _messagesSubject = PassthroughSubject<[AgentMessage], Never>()
     private let _isStreamingSubject = PassthroughSubject<Bool, Never>()
     private let _internalThoughtSubject = PassthroughSubject<String, Never>()
+    private let _protocolEventSubject = PassthroughSubject<ProtocolEventRecord, Never>()
 
     /// Publishes every `status` change.
     public var statusPublisher: AnyPublisher<ConnectionStatus, Never> {
@@ -77,6 +78,15 @@ public final class AgentStream {
     /// Publishes the accumulated `internalThought` after every token.
     public var internalThoughtPublisher: AnyPublisher<String, Never> {
         _internalThoughtSubject.eraseToAnyPublisher()
+    }
+
+    /// Publishes every raw Socket.IO protocol event as it is processed.
+    ///
+    /// Each value carries the event name, direction (S→C or C→S), a timestamp,
+    /// and an optional pretty-printed JSON string of the first payload object.
+    /// Subscribe to this to build a live protocol log or debugging UI.
+    public var protocolEventPublisher: AnyPublisher<ProtocolEventRecord, Never> {
+        _protocolEventSubject.eraseToAnyPublisher()
     }
 
     // MARK: - Private
@@ -159,6 +169,7 @@ public final class AgentStream {
         } else {
             let payload = MessagePayload(text: text, context: context)
             socket.emit(SocketEvent.message, with: [payload.toSocketData()])
+            emitProtocolEvent(SocketEvent.message, direction: .outgoing, rawData: [payload.toSocketData()])
         }
     }
 
@@ -214,12 +225,14 @@ public final class AgentStream {
     /// state is reset accordingly.
     public func clearContext() {
         socket?.emitEmpty(SocketEvent.clearContext)
+        emitProtocolEvent(SocketEvent.clearContext, direction: .outgoing)
     }
 
     /// Push arbitrary JSON data into the server's per-thread context.
     public func setContext(_ data: [String: Any]) {
         let payload = SetContextPayload(data: data)
         socket?.emit(SocketEvent.setContext, with: [payload.toSocketData()])
+        emitProtocolEvent(SocketEvent.setContext, direction: .outgoing, rawData: [payload.toSocketData()])
     }
 
     /// Replace the active `LocalToolCoordinator`.
@@ -256,14 +269,42 @@ public final class AgentStream {
         )
     }
 
+    // MARK: - Protocol Event Helper
+
+    /// Fires a `ProtocolEventRecord` on `_protocolEventSubject`.
+    /// Must be called from the main actor.
+    private func emitProtocolEvent(
+        _ name: String,
+        direction: ProtocolEventRecord.Direction,
+        rawData: [Any] = []
+    ) {
+        let payloadJSON: String?
+        if let dict = rawData.first as? [String: Any],
+           let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+           let str = String(data: data, encoding: .utf8) {
+            payloadJSON = str
+        } else {
+            payloadJSON = nil
+        }
+        _protocolEventSubject.send(
+            ProtocolEventRecord(name: name, direction: direction, payloadJSON: payloadJSON)
+        )
+    }
+
     // MARK: - Event Listener Setup
 
     private func attachListeners(to socket: any AgentSocketProtocol) {
         socket.on(SocketEvent.connect) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.handleConnect() }
+            Task { @MainActor [weak self] in
+                self?.emitProtocolEvent(SocketEvent.connect, direction: .incoming)
+                self?.handleConnect()
+            }
         }
         socket.on(SocketEvent.disconnect) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.handleDisconnect() }
+            Task { @MainActor [weak self] in
+                self?.emitProtocolEvent(SocketEvent.disconnect, direction: .incoming)
+                self?.handleDisconnect()
+            }
         }
         socket.on(SocketEvent.connectError) { [weak self] data in
             Task { @MainActor [weak self] in
@@ -276,6 +317,7 @@ public final class AgentStream {
                 } else {
                     message = "Connection error"
                 }
+                self?.emitProtocolEvent(SocketEvent.connectError, direction: .incoming, rawData: [["message": message]])
                 self?.handleConnectError(message)
             }
         }
@@ -284,6 +326,7 @@ public final class AgentStream {
                 guard let payload = decodeSocketData(WelcomePayload.self, from: data) else { return }
                 self?.serverVersion = payload.serverVersion
                 self?.serverCapabilities = payload.capabilities
+                self?.emitProtocolEvent(SocketEvent.welcome, direction: .incoming, rawData: data)
                 self?.publishAll()
             }
         }
@@ -294,6 +337,7 @@ public final class AgentStream {
                 self?.status = .disconnected
                 self?.isStreaming = false
                 self?.isWorking = false
+                self?.emitProtocolEvent(SocketEvent.inactiveClose, direction: .incoming, rawData: data)
                 self?.publishAll()
             }
         }
@@ -301,6 +345,7 @@ public final class AgentStream {
             guard let payload = decodeSocketData(AttachmentAckPayload.self, from: data) else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.emitProtocolEvent(SocketEvent.attachmentAck, direction: .incoming, rawData: data)
                 guard var entry = self.pendingAttachmentAcks[payload.correlationId] else { return }
                 entry.pending.remove(payload.seq)
                 if entry.pending.isEmpty {
@@ -318,6 +363,7 @@ public final class AgentStream {
                     clientVersion: payload.clientVersion,
                     serverVersion: payload.serverVersion
                 ).errorDescription ?? "Protocol version not supported"
+                self?.emitProtocolEvent(SocketEvent.versionNotSupported, direction: .incoming, rawData: data)
                 self?.status = .error(msg)
                 self?.publishAll()
             }
@@ -326,6 +372,7 @@ public final class AgentStream {
             Task { @MainActor [weak self] in
                 guard let payload = decodeSocketData(AgentWorkingPayload.self, from: data) else { return }
                 self?.isWorking = payload.working
+                self?.emitProtocolEvent(SocketEvent.agentWorking, direction: .incoming, rawData: data)
                 self?.publishAll()
             }
         }
@@ -333,12 +380,14 @@ public final class AgentStream {
             Task { @MainActor [weak self] in
                 guard let payload = decodeSocketData(InternalTokenPayload.self, from: data) else { return }
                 self?.internalThought += payload.token
+                self?.emitProtocolEvent(SocketEvent.internalToken, direction: .incoming, rawData: data)
                 self?._internalThoughtSubject.send(self?.internalThought ?? "")
             }
         }
         socket.on(SocketEvent.agentResponse) { [weak self] data in
             Task { @MainActor [weak self] in
                 guard let payload = decodeSocketData(AgentResponsePayload.self, from: data) else { return }
+                self?.emitProtocolEvent(SocketEvent.agentResponse, direction: .incoming, rawData: data)
                 self?.handleAgentResponse(payload)
             }
         }
@@ -347,6 +396,7 @@ public final class AgentStream {
                 self?.messages = []
                 self?.internalThought = ""
                 self?.isStreaming = false
+                self?.emitProtocolEvent(SocketEvent.contextCleared, direction: .incoming)
                 self?.publishAll()
             }
         }
@@ -355,6 +405,7 @@ public final class AgentStream {
                 guard let payload = decodeSocketData(ErrorPayload.self, from: data) else { return }
                 self?.status = .error(payload.message)
                 self?.isStreaming = false
+                self?.emitProtocolEvent(SocketEvent.error, direction: .incoming, rawData: data)
                 self?.publishAll()
             }
         }
@@ -362,6 +413,7 @@ public final class AgentStream {
             guard let payload = LocalToolPayload.decode(from: data) else { return }
             let capturedSocket = socket
             Task { @MainActor [weak self] in
+                self?.emitProtocolEvent(SocketEvent.localTool, direction: .incoming, rawData: data)
                 if let coordinator = self?.localToolCoordinator {
                     await coordinator.handle(payload, socket: capturedSocket)
                     return
@@ -380,6 +432,7 @@ public final class AgentStream {
         socket.on(SocketEvent.localToolResponseAck) { [weak self] data in
             guard let payload = decodeSocketData(LocalToolResponseAckPayload.self, from: data) else { return }
             Task { @MainActor [weak self] in
+                self?.emitProtocolEvent(SocketEvent.localToolResponseAck, direction: .incoming, rawData: data)
                 guard let coordinator = self?.localToolCoordinator else { return }
                 await coordinator.handleAck(payload)
             }
@@ -397,6 +450,7 @@ public final class AgentStream {
             inactivityTimeoutMs: configuration.inactivityTimeoutMs
         )
         socket?.emit(SocketEvent.clientHello, with: [hello.toSocketData()])
+        emitProtocolEvent(SocketEvent.clientHello, direction: .outgoing, rawData: [hello.toSocketData()])
         publishAll()
     }
 
