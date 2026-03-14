@@ -19,6 +19,8 @@ struct ProtocolLogView: View {
             } else {
                 List(viewModel.entries) { entry in
                     ProtocolLogRow(entry: entry)
+                        .onTapGesture { viewModel.toggle(id: entry.id) }
+                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
                 }
                 .listStyle(.plain)
                 .font(.system(.caption, design: .monospaced))
@@ -27,6 +29,11 @@ struct ProtocolLogView: View {
         .navigationTitle("Protocol Log")
         .task { viewModel.observe(stream: stream) }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Text("\(viewModel.totalEventCount) events")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             ToolbarItem(placement: .destructiveAction) {
                 Button("Clear", role: .destructive) { viewModel.clear() }
                     .disabled(viewModel.entries.isEmpty)
@@ -40,25 +47,78 @@ struct ProtocolLogView: View {
 private struct ProtocolLogRow: View {
     let entry: ProtocolLogEntry
 
+    private var isIncoming: Bool { entry.direction == .incoming }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
+        VStack(alignment: .leading, spacing: 4) {
+            // Header line
+            HStack(spacing: 6) {
                 Text(entry.direction.rawValue)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(entry.direction == .incoming ? Color.green : Color.blue)
+                    .fontWeight(.bold)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(isIncoming ? Color.green : Color.blue)
+
                 Text(entry.eventName)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.accent)
-                Spacer()
+                    .foregroundStyle(entry.accentColor)
+
+                Text(entry.label)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                if entry.count > 1 {
+                    Text("×\(entry.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.25), in: Capsule())
+                        .foregroundStyle(.secondary)
+                }
+
                 Text(entry.formattedTime)
                     .foregroundStyle(.secondary)
+                    .font(.system(.caption2, design: .monospaced))
+
+                Image(systemName: entry.isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
-            if !entry.payload.isEmpty {
-                Text(entry.payload)
+
+            // Collapsed: summary line
+            if !entry.isExpanded {
+                Text(summarise(eventName: entry.eventName, payloadJSON: entry.latestPayload))
                     .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } else {
+                // Expanded: all merged payloads
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(entry.payloads.enumerated()), id: \.offset) { idx, payload in
+                            VStack(alignment: .leading, spacing: 2) {
+                                if entry.count > 1 {
+                                    Text("#\(idx + 1)")
+                                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                Text(payload.isEmpty ? "—" : payload)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .textSelection(.enabled)
+                            }
+                            if idx < entry.payloads.count - 1 {
+                                Divider()
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+                .frame(maxHeight: 200)
+                .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 }
