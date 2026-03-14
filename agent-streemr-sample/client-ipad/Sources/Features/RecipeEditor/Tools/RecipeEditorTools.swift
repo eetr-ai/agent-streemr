@@ -10,12 +10,13 @@ func registerRecipeEditorTools(
     on stream: AgentStream,
     recipeService: RecipeService,
     photoStaging: PhotoStagingService,
+    selectedRecipeState: SelectedRecipeState,
     toolCallLog: ToolCallLogViewModel
 ) async {
 
     // MARK: recipe_create
 
-    await stream.registerTool("recipe_create", handler: toolCallLog.wrap("recipe_create") { [recipeService] args in
+    await stream.registerTool("recipe_create", handler: toolCallLog.wrap("recipe_create") { [recipeService, selectedRecipeState] args in
         let result: LocalToolHandlerResult = await MainActor.run {
             do {
                 let recipe = try recipeService.create()
@@ -26,7 +27,13 @@ func registerRecipeEditorTools(
                 if let servings = args["servings"] {
                     recipe.servings = parseServings(servings) ?? recipe.servings
                 }
-                return .success(responseJSON: ["id": recipe.id, "name": recipe.name])
+                try recipeService.save(recipe)
+                selectedRecipeState.selectedRecipeId = recipe.id
+                return .success(responseJSON: [
+                    "id": recipe.id,
+                    "name": recipe.name,
+                    "ok": true
+                ])
             } catch {
                 return .error(message: error.localizedDescription)
             }

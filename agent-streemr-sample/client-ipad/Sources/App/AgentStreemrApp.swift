@@ -9,10 +9,12 @@ struct AgentStreemrApp: App {
         repository: SwiftDataRecipeRepository()
     )
 
-    /// Placeholder configuration — replace URL and token before connecting.
+    /// Server URL and token. For Simulator use http://localhost:PORT.
+    /// For a physical iPad use your Mac's IP (e.g. http://192.168.1.x:3000).
+    /// If the server requires auth, set a non-empty token.
     @State private var stream = AgentStream(
         configuration: AgentStreamConfiguration(
-            url: URL(string: "http://localhost:3000")!,
+            url: URL(string: "http://localhost:8080")!,
             token: ""
         )
     )
@@ -21,6 +23,7 @@ struct AgentStreemrApp: App {
     @State private var photoStagingService = PhotoStagingService()
     @State private var selectedRecipeState = SelectedRecipeState()
     @State private var toolCallLogViewModel = ToolCallLogViewModel()
+    @State private var protocolLogViewModel = ProtocolLogViewModel()
 
     var body: some Scene {
         WindowGroup {
@@ -31,7 +34,9 @@ struct AgentStreemrApp: App {
                 .environment(\.photoStagingService, photoStagingService)
                 .environment(selectedRecipeState)
                 .environment(toolCallLogViewModel)
+                .environment(protocolLogViewModel)
                 .task {
+                    protocolLogViewModel.observe(stream: stream)
                     await registerRecipeListTools(
                         on: stream,
                         recipeService: recipeService,
@@ -42,6 +47,7 @@ struct AgentStreemrApp: App {
                         on: stream,
                         recipeService: recipeService,
                         photoStaging: photoStagingService,
+                        selectedRecipeState: selectedRecipeState,
                         toolCallLog: toolCallLogViewModel
                     )
                 }

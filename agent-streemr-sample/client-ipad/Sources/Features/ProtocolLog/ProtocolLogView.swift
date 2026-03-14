@@ -5,8 +5,7 @@ import AgentStreemrSwift
 /// Useful for debugging.
 struct ProtocolLogView: View {
 
-    @Environment(AgentStream.self) private var stream
-    @State private var viewModel = ProtocolLogViewModel()
+    @Environment(ProtocolLogViewModel.self) private var viewModel
 
     var body: some View {
         Group {
@@ -27,7 +26,6 @@ struct ProtocolLogView: View {
             }
         }
         .navigationTitle("Protocol Log")
-        .task { viewModel.observe(stream: stream) }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Text("\(viewModel.totalEventCount) events")
