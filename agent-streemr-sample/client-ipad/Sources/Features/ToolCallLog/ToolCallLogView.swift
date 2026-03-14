@@ -23,6 +23,7 @@ struct ToolCallLogView: View {
             }
         }
         .navigationTitle("Tool Calls")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .destructiveAction) {
                 Button("Clear", role: .destructive) { viewModel.clear() }

@@ -8,11 +8,6 @@ struct ContentView: View {
             Tab("Recipes", systemImage: "fork.knife") {
                 RecipeTabView()
             }
-            Tab("Tool Calls", systemImage: "wrench.and.screwdriver") {
-                NavigationStack {
-                    ToolCallLogView()
-                }
-            }
             Tab("Protocol Log", systemImage: "antenna.radiowaves.left.and.right") {
                 NavigationStack {
                     ProtocolLogView()
@@ -36,6 +31,7 @@ private struct FloatingChatWindow: View {
     @Environment(ChatViewModel.self) private var chatViewModel
     @Environment(ToolApprovalService.self) private var toolApprovalService
     @State private var isExpanded = false
+    @State private var showingToolCalls = false
     @State private var dragOffset: CGSize = .zero
     @State private var accumulatedOffset: CGSize = .zero
 
@@ -75,6 +71,17 @@ private struct FloatingChatWindow: View {
                                 )
                             }
                             Spacer()
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.22)) {
+                                    showingToolCalls.toggle()
+                                }
+                            } label: {
+                                Image(systemName: showingToolCalls ? "bubble.left.and.bubble.right" : "wrench.and.screwdriver")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help(showingToolCalls ? "Show chat" : "Show tool calls")
+
                             if shouldShowReconnect {
                                 Button("Reconnect") {
                                     chatViewModel.reconnect(stream: stream)
@@ -109,7 +116,18 @@ private struct FloatingChatWindow: View {
                         .padding(.vertical, 8)
                         .background(Color(.secondarySystemBackground))
 
-                        ChatView()
+                        ZStack {
+                            if showingToolCalls {
+                                NavigationStack {
+                                    ToolCallLogView()
+                                }
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                            } else {
+                                ChatView()
+                                    .transition(.move(edge: .leading).combined(with: .opacity))
+                            }
+                        }
+                        .clipped()
                     }
                     .frame(width: width, height: height)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -172,6 +190,7 @@ private struct FloatingChatWindow: View {
         }
         .allowsHitTesting(true)
         .animation(.spring(response: 0.32, dampingFraction: 0.84), value: isExpanded)
+        .animation(.easeInOut(duration: 0.22), value: showingToolCalls)
         .task {
             chatViewModel.start(using: stream)
             toolApprovalService.observe(stream: stream)
@@ -217,6 +236,9 @@ private struct ConnectionBadge: View {
         case .connecting:
             return .orange
         case .disconnected:
+            if let inactiveCloseReason, !inactiveCloseReason.isEmpty {
+                return .yellow
+            }
             return .gray
         case .error:
             return .red

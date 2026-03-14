@@ -91,19 +91,13 @@ struct ChatView: View {
                     ), axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1 ... 6)
+                        .submitLabel(.send)
+                        .onSubmit {
+                            sendCurrentMessage()
+                        }
 
                     Button {
-                        if let attachment = viewModel.pendingAttachment {
-                            attachmentReferenceStore.prepareOutgoingAttachments(
-                                assetIdentifiers: [attachment.assetIdentifier]
-                            )
-                            photoStagingService.stage(
-                                data: attachment.data,
-                                mimeType: attachment.mimeType,
-                                assetIdentifier: attachment.assetIdentifier
-                            )
-                        }
-                        viewModel.send(using: stream, context: currentChatContext)
+                        sendCurrentMessage()
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.title2)
@@ -140,6 +134,23 @@ struct ChatView: View {
             name: name,
             assetIdentifier: item.itemIdentifier
         )
+    }
+
+    private func sendCurrentMessage() {
+        guard viewModel.canSend(stream: stream) else { return }
+
+        if let attachment = viewModel.pendingAttachment {
+            attachmentReferenceStore.prepareOutgoingAttachments(
+                assetIdentifiers: [attachment.assetIdentifier]
+            )
+            photoStagingService.stage(
+                data: attachment.data,
+                mimeType: attachment.mimeType,
+                assetIdentifier: attachment.assetIdentifier
+            )
+        }
+
+        viewModel.send(using: stream, context: currentChatContext)
     }
 
     private var currentChatContext: [String: Any]? {
@@ -179,7 +190,9 @@ private struct MessageBubble: View {
                 }
 
                 if !message.content.isEmpty || message.isStreaming {
-                    Text(message.content.isEmpty && message.isStreaming ? "…" : message.content)
+                    MarkdownMessageText(
+                        markdown: message.content.isEmpty && message.isStreaming ? "…" : message.content
+                    )
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
@@ -210,6 +223,231 @@ private struct MessageBubble: View {
 
     private var timestampForegroundColor: Color {
         message.role == .user ? .white.opacity(0.72) : .secondary
+    }
+}
+
+private struct MarkdownMessageText: View {
+    let markdown: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(ChatMarkdownBlock.parse(markdown: markdown)) { block in
+                switch block.content {
+                case .markdown(let text):
+                    ChatMarkdownTextBlock(markdown: text)
+                case .table(let table):
+                    ChatMarkdownTableView(table: table)
+                }
+            }
+        }
+    }
+}
+
+private struct ChatMarkdownTextBlock: View {
+    let markdown: String
+
+    var body: some View {
+        if let attributed = try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+        ) {
+            Text(attributed)
+        } else {
+            Text(markdown)
+        }
+    }
+}
+
+private struct ChatMarkdownTableView: View {
+    let table: ChatMarkdownTable
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(Array(table.headers.enumerated()), id: \.offset) { index, header in
+                        tableCell(
+                            header,
+                            isHeader: true,
+                            alignment: table.alignment(at: index)
+                        )
+                    }
+                }
+
+                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                    GridRow {
+                        ForEach(Array(row.enumerated()), id: \.offset) { index, cell in
+                            tableCell(
+                                cell,
+                                isHeader: false,
+                                alignment: table.alignment(at: index)
+                            )
+                        }
+                    }
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(.separator), lineWidth: 1)
+            )
+        }
+    }
+
+    private func tableCell(_ text: String, isHeader: Bool, alignment: TextAlignment) -> some View {
+        let backgroundColor = isHeader ? Color.accentColor.opacity(0.12) : Color.clear
+        return Text(text)
+            .font(isHeader ? .caption.weight(.semibold) : .caption)
+            .multilineTextAlignment(alignment)
+            .frame(minWidth: 96, maxWidth: .infinity, alignment: frameAlignment(for: alignment))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(backgroundColor)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color(.separator))
+                    .frame(height: 1)
+            }
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(Color(.separator))
+                    .frame(width: 1)
+            }
+    }
+
+    private func frameAlignment(for alignment: TextAlignment) -> Alignment {
+        switch alignment {
+        case .center:
+            return .center
+        case .trailing:
+            return .trailing
+        default:
+            return .leading
+        }
+    }
+}
+
+private struct ChatMarkdownBlock: Identifiable {
+    enum Content {
+        case markdown(String)
+        case table(ChatMarkdownTable)
+    }
+
+    let id = UUID()
+    let content: Content
+
+    static func parse(markdown: String) -> [ChatMarkdownBlock] {
+        let lines = markdown.components(separatedBy: .newlines)
+        var blocks: [ChatMarkdownBlock] = []
+        var currentMarkdown: [String] = []
+        var index = 0
+
+        func flushMarkdown() {
+            let text = currentMarkdown.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                blocks.append(ChatMarkdownBlock(content: .markdown(text)))
+            }
+            currentMarkdown.removeAll()
+        }
+
+        while index < lines.count {
+            if let table = ChatMarkdownTable.consume(from: lines, startingAt: index) {
+                flushMarkdown()
+                blocks.append(ChatMarkdownBlock(content: .table(table.table)))
+                index = table.nextIndex
+            } else {
+                currentMarkdown.append(lines[index])
+                index += 1
+            }
+        }
+
+        flushMarkdown()
+        return blocks
+    }
+}
+
+private struct ChatMarkdownTable {
+    enum ColumnAlignment {
+        case leading
+        case center
+        case trailing
+    }
+
+    let headers: [String]
+    let rows: [[String]]
+    let alignments: [ColumnAlignment]
+
+    func alignment(at index: Int) -> TextAlignment {
+        guard alignments.indices.contains(index) else { return .leading }
+        switch alignments[index] {
+        case .leading:
+            return .leading
+        case .center:
+            return .center
+        case .trailing:
+            return .trailing
+        }
+    }
+
+    static func consume(from lines: [String], startingAt startIndex: Int) -> (table: ChatMarkdownTable, nextIndex: Int)? {
+        guard startIndex + 1 < lines.count else { return nil }
+        let headerLine = lines[startIndex]
+        let separatorLine = lines[startIndex + 1]
+        guard isTableRow(headerLine), isSeparatorRow(separatorLine) else { return nil }
+
+        let headers = splitRow(headerLine)
+        let alignments = splitRow(separatorLine).map(parseAlignment)
+        guard !headers.isEmpty, headers.count == alignments.count else { return nil }
+
+        var rows: [[String]] = []
+        var index = startIndex + 2
+        while index < lines.count, isTableRow(lines[index]) {
+            let row = splitRow(lines[index])
+            if row.count == headers.count {
+                rows.append(row)
+                index += 1
+            } else {
+                break
+            }
+        }
+
+        return (ChatMarkdownTable(headers: headers, rows: rows, alignments: alignments), index)
+    }
+
+    private static func isTableRow(_ line: String) -> Bool {
+        line.contains("|") && !line.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private static func isSeparatorRow(_ line: String) -> Bool {
+        let cells = splitRow(line)
+        guard !cells.isEmpty else { return false }
+        return cells.allSatisfy { cell in
+            let trimmed = cell.trimmingCharacters(in: .whitespaces)
+            guard trimmed.contains("-") else { return false }
+            return trimmed.allSatisfy { $0 == "-" || $0 == ":" }
+        }
+    }
+
+    private static func splitRow(_ line: String) -> [String] {
+        line
+            .trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+            .split(separator: "|", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private static func parseAlignment(_ token: String) -> ColumnAlignment {
+        let trimmed = token.trimmingCharacters(in: .whitespaces)
+        let hasLeading = trimmed.hasPrefix(":")
+        let hasTrailing = trimmed.hasSuffix(":")
+
+        switch (hasLeading, hasTrailing) {
+        case (true, true):
+            return .center
+        case (false, true):
+            return .trailing
+        default:
+            return .leading
+        }
     }
 }
 
