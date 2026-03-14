@@ -1,13 +1,16 @@
 import SwiftUI
+import PhotosUI
 import AgentStreemrSwift
 
 /// Main chat interface. Displays the conversation history and a message input bar.
 struct ChatView: View {
 
     @Environment(AgentStream.self) private var stream
+    @Environment(ChatViewModel.self) private var viewModel
     @Environment(ToolApprovalService.self) private var toolApprovalService
     @Environment(\.photoStagingService) private var photoStagingService
-    @State private var viewModel = ChatViewModel()
+    @Environment(\.attachmentReferenceStore) private var attachmentReferenceStore
+    @State private var selectedPhotoItem: PhotosPickerItem?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,8 +18,16 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(stream.messages) { message in
-                            MessageBubble(message: message)
+                            MessageBubble(
+                                message: message,
+                                attachmentPreviewData: viewModel.attachmentPreviewData(for: message),
+                                timestamp: viewModel.timestamp(for: message)
+                            )
                                 .id(message.id)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.96)),
+                                    removal: .opacity
+                                ))
                         }
 
                         if !stream.internalThought.isEmpty {
@@ -33,6 +44,7 @@ struct ChatView: View {
                         }
                     }
                     .padding()
+                    .animation(.spring(response: 0.34, dampingFraction: 0.82), value: stream.messages.count)
                 }
                 .onChange(of: stream.messages.count) { _, _ in
                     if let last = stream.messages.last {
@@ -61,22 +73,34 @@ struct ChatView: View {
                 }
 
                 HStack(spacing: 12) {
-                    Button {
-                        stream.clearContext()
-                    } label: {
-                        Image(systemName: "trash")
+                    PhotosPicker(
+                        selection: $selectedPhotoItem,
+                        matching: .images,
+                        photoLibrary: .shared()
+                    ) {
+                        Image(systemName: "photo.on.rectangle")
                             .font(.title3)
                     }
                     .buttonStyle(.bordered)
-                    .help("Clear context")
+                    .help("Attach a photo")
 
-                    TextField("Message…", text: $viewModel.inputText, axis: .vertical)
+                    TextField("Message…", text: Binding(
+                        get: { viewModel.inputText },
+                        set: { viewModel.inputText = $0 }
+                    ), axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1 ... 6)
 
                     Button {
                         if let attachment = viewModel.pendingAttachment {
-                            photoStagingService.stage(data: attachment.data, mimeType: attachment.mimeType)
+                            attachmentReferenceStore.prepareOutgoingAttachments(
+                                assetIdentifiers: [attachment.assetIdentifier]
+                            )
+                            photoStagingService.stage(
+                                data: attachment.data,
+                                mimeType: attachment.mimeType,
+                                assetIdentifier: attachment.assetIdentifier
+                            )
                         }
                         viewModel.send(using: stream)
                     } label: {
@@ -91,18 +115,37 @@ struct ChatView: View {
             .padding(.vertical, 10)
         }
         .navigationTitle("Chat")
-        .task {
-            viewModel.connect(to: stream)
-            toolApprovalService.observe(stream: stream)
-        }
         .overlay(alignment: .top) {
             StatusBanner(status: stream.status, inactiveCloseReason: stream.inactiveCloseReason)
         }
+        .onChange(of: selectedPhotoItem) { _, newValue in
+            guard let newValue else { return }
+            Task {
+                await loadAttachment(from: newValue)
+            }
+        }
+    }
+
+    private func loadAttachment(from item: PhotosPickerItem) async {
+        defer { selectedPhotoItem = nil }
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        let mimeType = item.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg"
+        let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
+        let name = item.itemIdentifier ?? "photo.\(ext)"
+        photoStagingService.rememberLastAttachedPhoto(assetIdentifier: item.itemIdentifier)
+        viewModel.pendingAttachment = ChatViewModel.PendingAttachment(
+            data: data,
+            mimeType: mimeType,
+            name: name,
+            assetIdentifier: item.itemIdentifier
+        )
     }
 }
 
 private struct MessageBubble: View {
     let message: AgentMessage
+    let attachmentPreviewData: Data?
+    let timestamp: Date?
 
     var body: some View {
         HStack {
@@ -110,10 +153,31 @@ private struct MessageBubble: View {
                 Spacer(minLength: 60)
             }
 
-            Text(message.content.isEmpty && message.isStreaming ? "…" : message.content)
-                .padding(10)
-                .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
-                .foregroundStyle(foregroundColor)
+            VStack(alignment: .leading, spacing: 8) {
+                if let attachmentPreviewData,
+                   let image = UIImage(data: attachmentPreviewData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 220, maxHeight: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                if !message.content.isEmpty || message.isStreaming {
+                    Text(message.content.isEmpty && message.isStreaming ? "…" : message.content)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let timestamp {
+                    Text(timestamp, format: .dateTime.hour().minute())
+                        .font(.caption2)
+                        .foregroundStyle(timestampForegroundColor)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+            .padding(10)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
+            .foregroundStyle(foregroundColor)
 
             if message.role == .assistant {
                 Spacer(minLength: 60)
@@ -127,6 +191,10 @@ private struct MessageBubble: View {
 
     private var foregroundColor: Color {
         message.role == .user ? .white : .primary
+    }
+
+    private var timestampForegroundColor: Color {
+        message.role == .user ? .white.opacity(0.72) : .secondary
     }
 }
 
@@ -172,16 +240,27 @@ private struct ThinkingPanel: View {
 }
 
 private struct TypingIndicator: View {
+    @State private var isAnimating = false
+
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(0 ..< 3, id: \.self) { _ in
+            ForEach(0 ..< 3, id: \.self) { index in
                 Circle()
                     .fill(Color.secondary)
                     .frame(width: 8, height: 8)
+                    .scaleEffect(isAnimating ? 1 : 0.55)
+                    .opacity(isAnimating ? 1 : 0.35)
+                    .animation(
+                        .easeInOut(duration: 0.55)
+                            .repeatForever()
+                            .delay(Double(index) * 0.14),
+                        value: isAnimating
+                    )
             }
         }
         .padding(10)
         .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 10))
+        .onAppear { isAnimating = true }
     }
 }
 

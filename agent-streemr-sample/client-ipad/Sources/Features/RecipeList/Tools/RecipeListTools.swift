@@ -57,7 +57,9 @@ func registerRecipeListTools(
                 "tags": recipe.tags,
                 "isNew": recipeEditorViewModel.isNewRecipe && recipeEditorViewModel.currentRecipeId == recipe.id
             ]
-            if let photo = recipe.photoBase64 { dict["photoBase64"] = photo }
+            if let photoAssetIdentifier = recipe.photoAssetIdentifier {
+                dict["photoAssetIdentifier"] = photoAssetIdentifier
+            }
             return .success(responseJSON: ["recipe": dict])
         }
         return result

@@ -167,7 +167,9 @@ public final class AgentStream {
                     let correlationId = try await self.uploadAttachments(attachments: attachments, to: capturedSocket)
                     guard self.socket === capturedSocket else { return } // socket replaced
                     let payload = MessagePayload(text: text, context: context, attachmentCorrelationId: correlationId)
-                    capturedSocket.emit(SocketEvent.message, with: [payload.toSocketData()])
+                    let socketData = payload.toSocketData()
+                    capturedSocket.emit(SocketEvent.message, with: [socketData])
+                    self.emitProtocolEvent(SocketEvent.message, direction: .outgoing, rawData: [socketData])
                 } catch {
                     self.status = .error(error.localizedDescription)
                     self.isStreaming = false

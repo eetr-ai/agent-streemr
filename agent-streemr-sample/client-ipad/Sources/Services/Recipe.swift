@@ -15,8 +15,8 @@ final class Recipe {
     var directions: [String]
     var servings: Int
     var tags: [String]
-    /// Base-64 encoded JPEG. `nil` when no photo has been set.
-    var photoBase64: String?
+    /// Photos library asset local identifier. `nil` when no photo has been set.
+    var photoAssetIdentifier: String?
     var createdAt: Date
     var updatedAt: Date
 
@@ -28,7 +28,7 @@ final class Recipe {
         directions: [String] = [],
         servings: Int = 2,
         tags: [String] = [],
-        photoBase64: String? = nil
+        photoAssetIdentifier: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -37,7 +37,7 @@ final class Recipe {
         self.directions = directions
         self.servings = servings
         self.tags = tags
-        self.photoBase64 = photoBase64
+        self.photoAssetIdentifier = photoAssetIdentifier
         self.createdAt = Date()
         self.updatedAt = Date()
     }

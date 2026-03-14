@@ -1,4 +1,5 @@
 import SwiftUI
+import AgentStreemrSwift
 
 /// Root view — recipe editor as primary, with floating chat and tabs for tools/protocol.
 struct ContentView: View {
@@ -31,6 +32,9 @@ struct ContentView: View {
 // MARK: - Floating Chat Window
 
 private struct FloatingChatWindow: View {
+    @Environment(AgentStream.self) private var stream
+    @Environment(ChatViewModel.self) private var chatViewModel
+    @Environment(ToolApprovalService.self) private var toolApprovalService
     @State private var isExpanded = false
     @State private var dragOffset: CGSize = .zero
     @State private var accumulatedOffset: CGSize = .zero
@@ -61,10 +65,38 @@ private struct FloatingChatWindow: View {
                     VStack(spacing: 0) {
                         // Header with drag handle and close
                         HStack {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.secondary.opacity(0.5))
-                                .frame(width: 36, height: 4)
+                            VStack(alignment: .leading, spacing: 4) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.secondary.opacity(0.5))
+                                    .frame(width: 36, height: 4)
+                                ConnectionBadge(
+                                    status: stream.status,
+                                    inactiveCloseReason: stream.inactiveCloseReason
+                                )
+                            }
                             Spacer()
+                            if shouldShowReconnect {
+                                Button("Reconnect") {
+                                    chatViewModel.reconnect(stream: stream)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            } else if stream.status.isConnected {
+                                Button("Disconnect") {
+                                    chatViewModel.disconnect(stream: stream)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                Button {
+                                    stream.clearContext()
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .help("Clear chat")
+                            }
                             Button {
                                 withAnimation(.easeInOut(duration: 0.2)) { isExpanded = false }
                             } label: {
@@ -82,6 +114,7 @@ private struct FloatingChatWindow: View {
                     .frame(width: width, height: height)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
+                    .transition(.scale(scale: 0.92).combined(with: .opacity))
                     .position(
                         x: defaultCenterX + accumulatedOffset.width + dragOffset.width,
                         y: defaultCenterY + accumulatedOffset.height + dragOffset.height
@@ -106,19 +139,97 @@ private struct FloatingChatWindow: View {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { isExpanded = true }
                 } label: {
-                    Label("Chat", systemImage: "bubble.left.and.bubble.right.fill")
-                        .font(.headline)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(.regularMaterial, in: Capsule())
-                        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+                    HStack(spacing: 10) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.headline)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Chat")
+                                .font(.headline)
+                            ConnectionBadge(
+                                status: stream.status,
+                                inactiveCloseReason: stream.inactiveCloseReason
+                            )
+                        }
+                        if toolApprovalService.pendingApprovals.isEmpty == false {
+                            Text("\(toolApprovalService.pendingApprovals.count)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(6)
+                                .background(Color.accentColor, in: Circle())
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.regularMaterial, in: Capsule())
+                    .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                 }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
                 .buttonStyle(.plain)
                 .padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
         }
         .allowsHitTesting(true)
+        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: isExpanded)
+        .task {
+            chatViewModel.start(using: stream)
+            toolApprovalService.observe(stream: stream)
+        }
+    }
+
+    private var shouldShowReconnect: Bool {
+        switch stream.status {
+        case .disconnected, .error:
+            return true
+        case .connecting, .connected:
+            return false
+        }
+    }
+}
+
+private struct ConnectionBadge: View {
+    let status: ConnectionStatus
+    let inactiveCloseReason: String?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+            Text(statusText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .connected:
+            return .green
+        case .connecting:
+            return .orange
+        case .disconnected:
+            return .gray
+        case .error:
+            return .red
+        }
+    }
+
+    private var statusText: String {
+        switch status {
+        case .connected:
+            return "Connected"
+        case .connecting:
+            return "Connecting"
+        case .error(let message):
+            return message
+        case .disconnected:
+            if let inactiveCloseReason, !inactiveCloseReason.isEmpty {
+                return "Disconnected: \(inactiveCloseReason)"
+            }
+            return "Disconnected"
+        }
     }
 }
 

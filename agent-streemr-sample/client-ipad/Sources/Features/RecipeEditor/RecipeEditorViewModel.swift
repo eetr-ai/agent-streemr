@@ -112,7 +112,7 @@ final class RecipeEditorViewModel {
         target.directions = source.directions
         target.servings = source.servings
         target.tags = source.tags
-        target.photoBase64 = source.photoBase64
+        target.photoAssetIdentifier = source.photoAssetIdentifier
     }
 
     func dismissError() { errorMessage = nil }

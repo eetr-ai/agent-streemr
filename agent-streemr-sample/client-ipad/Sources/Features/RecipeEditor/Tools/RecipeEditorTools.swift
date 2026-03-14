@@ -9,7 +9,8 @@ import AgentStreemrSwift
 func registerRecipeEditorTools(
     on stream: AgentStream,
     recipeService: RecipeService,
-    photoStaging: PhotoStagingService,
+    photoStagingService: PhotoStagingService,
+    attachmentReferenceStore: AttachmentReferenceStore,
     selectedRecipeState: SelectedRecipeState,
     recipeEditorViewModel: RecipeEditorViewModel,
     toolCallLog: ToolCallLogViewModel
@@ -235,22 +236,30 @@ func registerRecipeEditorTools(
 
     // MARK: recipe_set_photo
 
-    await register("recipe_set_photo") { [recipeService, photoStaging, recipeEditorViewModel] args in
-        let id = args["id"] as? String
+    await register("recipe_set_photo") { [photoStagingService, attachmentReferenceStore, recipeEditorViewModel] args in
         let result: LocalToolHandlerResult = await MainActor.run {
-            guard let staged = photoStaging.consume() else {
+            guard let recipe = recipeEditorViewModel.recipe else {
                 return .success(responseJSON: [
                     "ok": false,
-                    "error": "No photo staged. The user must attach an image first."
+                    "error": "No recipe is currently open."
                 ])
             }
-            guard let recipe = try? recipeEditorViewModel.recipeForEditing(id: id, using: recipeService) else {
-                return .success(responseJSON: ["ok": false, "error": "Recipe not found"])
+            let assetIdentifier =
+                photoStagingService.lastAttachedAssetIdentifier() ??
+                photoStagingService.currentAssetIdentifier() ??
+                attachmentReferenceStore.mostRecentAssetIdentifier()
+
+            guard let assetIdentifier else {
+                return .success(responseJSON: [
+                    "ok": false,
+                    "error": "No attached photo is available. Attach a photo first."
+                ])
             }
-            recipe.photoBase64 = staged.data.base64EncodedString()
+            recipe.photoAssetIdentifier = assetIdentifier
             return .success(responseJSON: [
                 "ok": true,
                 "id": recipe.id,
+                "photoAssetIdentifier": assetIdentifier,
                 "isNew": recipeEditorViewModel.isNewRecipe
             ])
         }

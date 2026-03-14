@@ -35,5 +35,7 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Agent Streemr needs access to your photo library so you can attach recipe photos in chat.</string>
 </dict>
 </plist>

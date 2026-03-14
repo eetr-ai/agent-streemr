@@ -1,4 +1,5 @@
 import SwiftUI
+import Photos
 import MarkdownUI
 
 /// Read-only detail panel for a single recipe, mirroring the layout of the
@@ -46,13 +47,8 @@ private struct RecipeContentView: View {
             VStack(alignment: .leading, spacing: 0) {
 
                 // Hero photo
-                if let photo = decodedPhoto {
-                    Image(uiImage: photo)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 280)
-                        .clipped()
+                if let photoAssetIdentifier = recipe.photoAssetIdentifier {
+                    RecipeDetailAssetImageView(assetIdentifier: photoAssetIdentifier)
                 }
 
                 VStack(alignment: .leading, spacing: 20) {
@@ -127,11 +123,58 @@ private struct RecipeContentView: View {
         .navigationTitle(recipe.name.isEmpty ? "Recipe" : recipe.name)
         .navigationBarTitleDisplayMode(.inline)
     }
+}
 
-    private var decodedPhoto: UIImage? {
-        guard let base64 = recipe.photoBase64,
-              let data = Data(base64Encoded: base64) else { return nil }
-        return UIImage(data: data)
+private struct RecipeDetailAssetImageView: View {
+    let assetIdentifier: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 280)
+                    .clipped()
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 280)
+            }
+        }
+        .task(id: assetIdentifier) {
+            image = await loadImage(assetIdentifier: assetIdentifier)
+        }
+    }
+
+    private func loadImage(assetIdentifier: String) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil)
+            guard let asset = assets.firstObject else {
+                continuation.resume(returning: nil)
+                return
+            }
+
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = true
+
+            var resumed = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 1600, height: 900),
+                contentMode: .aspectFill,
+                options: options
+            ) { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                guard !resumed, !isDegraded else { return }
+                resumed = true
+                continuation.resume(returning: image)
+            }
+        }
     }
 }
 
