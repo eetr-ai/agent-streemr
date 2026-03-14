@@ -114,6 +114,17 @@ export type SetContextPayload = {
 export type ClientHelloPayload = {
   /** The protocol version the client is implementing. */
   version: ProtocolVersion;
+  /**
+   * Optional agent identifier for routing this thread to a specific agent
+   * implementation when multiple agents are registered on the server.
+   */
+  agent_id?: string;
+  /**
+   * Requested inactivity timeout in milliseconds. The server may cap this to
+   * its own maximum and reports the effective value in `welcome.capabilities`.
+   * Omit or set to `0` to request no inactivity timeout.
+   */
+  inactivity_timeout_ms?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -270,6 +281,22 @@ export type ErrorPayload = {
 export type WelcomePayload = {
   /** The protocol version the server is running. */
   server_version: ProtocolVersion;
+  /**
+   * Server-side capabilities and negotiated connection settings.
+   * Clients should read these values and adapt their behaviour accordingly.
+   */
+  capabilities: {
+    /**
+     * Maximum byte length allowed for a single `attachment` body field.
+     * Clients must not send attachment bodies larger than this value.
+     */
+    max_message_size_bytes: number;
+    /**
+     * The effective inactivity timeout (in ms) negotiated for this connection,
+     * after applying the server's cap. `0` means no timeout is active.
+     */
+    inactivity_timeout_ms: number;
+  };
 };
 
 /**
@@ -313,6 +340,17 @@ export type AttachmentAckPayload = {
   correlation_id: string;
   /** Echoes the `seq` from the originating `attachment`. */
   seq: number;
+};
+
+/**
+ * Emitted by the server just before closing an idle connection due to inactivity.
+ * The socket is disconnected immediately after this event.
+ *
+ * Event name: `inactive_close`
+ */
+export type InactiveClosePayload = {
+  /** Human-readable reason for the closure, e.g. `"Inactivity timeout"`. */
+  reason: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -368,5 +406,7 @@ export interface ServerToClientEvents {
   context_cleared: (payload: ContextClearedPayload) => void;
   /** Acknowledges a validated and staged `attachment`. Idempotent on retry. */
   attachment_ack: (payload: AttachmentAckPayload) => void;
+  /** Emitted just before the server closes the socket due to inactivity. */
+  inactive_close: (payload: InactiveClosePayload) => void;
   error: (payload: ErrorPayload) => void;
 }

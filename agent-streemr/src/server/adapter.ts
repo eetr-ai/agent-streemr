@@ -34,7 +34,6 @@ import type { AgentStreamEvent } from "../protocol/stream.js";
  * |-------------------------|-------------------------|
  * | `internal_token`        | `internal_token`        |
  * | `agent_response`        | `agent_response`        |
- * | `response_reference`    | `response_reference`    |
  *
  * All emissions are point-to-point (`socket.emit`) — no broadcasts.
  */
@@ -72,13 +71,6 @@ export class AgentStreamAdapter {
           break;
         case "agent_response":
           this._socket.emit("agent_response", { chunk: event.chunk, done: event.done });
-          break;
-        case "response_reference":
-          this._socket.emit("response_reference", {
-            refType: event.refType,
-            slug: event.slug,
-            title: event.title,
-          });
           break;
       }
     }

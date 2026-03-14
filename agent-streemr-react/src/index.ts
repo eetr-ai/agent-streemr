@@ -55,6 +55,8 @@ export type {
   InternalTokenPayload,
   ContextClearedPayload,
   ErrorPayload,
+  Attachment,
+  InactiveClosePayload,
   ClientToServerEvents,
   ServerToClientEvents,
 } from "./types";

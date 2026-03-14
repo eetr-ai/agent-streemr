@@ -16,8 +16,14 @@ func decodeSocketData<T: Decodable>(_ type: T.Type, from data: [Any]) -> T? {
 
 // MARK: - welcome
 
+struct WelcomeCapabilities: Decodable {
+    let maxMessageSizeBytes: Int
+    let inactivityTimeoutMs: Int
+}
+
 struct WelcomePayload: Decodable {
     let serverVersion: ProtocolVersion
+    let capabilities: WelcomeCapabilities
 }
 
 // MARK: - version_not_supported
@@ -57,6 +63,19 @@ public struct LocalToolResponseAckPayload: Decodable, Sendable {
 
 struct ContextClearedPayload: Decodable {
     let message: String
+}
+
+// MARK: - inactive_close
+
+struct InactiveClosePayload: Decodable {
+    let reason: String
+}
+
+// MARK: - attachment_ack
+
+struct AttachmentAckPayload: Decodable {
+    let correlationId: String
+    let seq: Int
 }
 
 // MARK: - error

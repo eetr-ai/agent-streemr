@@ -12,6 +12,8 @@ enum SocketEvent {
     static let localTool             = "local_tool"
     static let localToolResponseAck  = "local_tool_response_ack"
     static let contextCleared        = "context_cleared"
+    static let inactiveClose         = "inactive_close"
+    static let attachmentAck         = "attachment_ack"
     static let error                 = "error"
 
     // MARK: Client → Server
@@ -20,4 +22,6 @@ enum SocketEvent {
     static let setContext            = "set_context"
     static let clearContext          = "clear_context"
     static let localToolResponse     = "local_tool_response"
+    static let startAttachments      = "start_attachments"
+    static let attachment            = "attachment"
 }

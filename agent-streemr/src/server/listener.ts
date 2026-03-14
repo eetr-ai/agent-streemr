@@ -37,7 +37,7 @@
 import { randomUUID } from "node:crypto";
 import type { Server, Socket } from "socket.io";
 import type { AgentStreamEvent } from "../protocol/stream.js";
-import type { ProtocolVersion } from "../protocol/events.js";
+import type { Attachment, ProtocolVersion } from "../protocol/events.js";
 import { parseLocalToolResponseEnvelope } from "../protocol/localTool.js";
 import { AgentStreamAdapter } from "./adapter.js";
 import { ThreadQueue } from "./queue.js";
@@ -111,7 +111,11 @@ export type AgentRunner<TContext> = (
   message: string,
   options: {
     threadId: string;
+    /** Agent identifier forwarded from the client's `client_hello.agent_id`. */
+    agent_id?: string;
     context?: TContext;
+    /** Staged attachments uploaded before this message, ordered by `seq`. */
+    attachments?: Attachment[];
     emitLocalTool: EmitLocalToolFn;
     localToolRegistry: LocalToolRegistry<TContext>;
   }
@@ -141,8 +145,11 @@ export type CreateAgentSocketListenerOptions<TContext> = {
    * Returns the `AgentRunner` function to use for `threadId`.
    * Called once per agent run (inside the queue). May return the same function
    * for all threads or vary per thread.
+   *
+   * `agentId` is forwarded from the client's `client_hello.agent_id` field and
+   * may be used to route different threads to different agent implementations.
    */
-  getAgentRunner: (threadId: string) => AgentRunner<TContext>;
+  getAgentRunner: (threadId: string, agentId?: string) => AgentRunner<TContext>;
 
   /** The `LocalToolRegistry` instance shared between the listener and tools. */
   localToolRegistry: LocalToolRegistry<TContext>;
@@ -194,6 +201,23 @@ export type CreateAgentSocketListenerOptions<TContext> = {
    * Defaults to 30 000 (30 s).
    */
   localToolTtlMs?: number;
+
+  /**
+   * Maximum byte length for a single attachment `body` field.
+   * Reported to clients in `welcome.capabilities.max_message_size_bytes`.
+   * Defaults to `5_242_880` (5 MiB).
+   */
+  maxMessageSizeBytes?: number;
+
+  /**
+   * Server-side cap on the inactivity timeout (in ms).
+   * When a client requests a timeout via `client_hello.inactivity_timeout_ms`,
+   * the effective timeout is `min(clientRequested, serverMax)`.
+   * When the client does not request a timeout but this is set, the server
+   * imposes the timeout unilaterally.
+   * `undefined` (default) means no cap / no unilateral timeout.
+   */
+  inactivityTimeoutMs?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -259,6 +283,8 @@ export function createAgentSocketListener<TContext>(
     onContextUpdate,
     onError,
     localToolTtlMs = 30_000,
+    maxMessageSizeBytes = 5_242_880,
+    inactivityTimeoutMs: serverInactivityTimeoutMs,
   } = options;
 
   const queue = new ThreadQueue();
@@ -272,11 +298,16 @@ export function createAgentSocketListener<TContext>(
   };
   const handleError = onError ?? defaultOnError;
 
-  function getOrCreateContext(threadId: string): TContext {
-    let ctx = contextStore.get(threadId);
+  function contextKey(threadId: string, agentId?: string): string {
+    return agentId ? `${agentId}:${threadId}` : threadId;
+  }
+
+  function getOrCreateContext(threadId: string, agentId?: string): TContext {
+    const key = contextKey(threadId, agentId);
+    let ctx = contextStore.get(key);
     if (!ctx) {
       ctx = createContext(threadId);
-      contextStore.set(threadId, ctx);
+      contextStore.set(key, ctx);
     }
     return ctx;
   }
@@ -335,18 +366,22 @@ export function createAgentSocketListener<TContext>(
   function enqueueRun(
     socket: Socket,
     threadId: string,
-    message: string
+    message: string,
+    agentId?: string,
+    attachments?: Attachment[]
   ): void {
     // Emit working=true the first time the queue becomes active for this thread.
     const isFirst = !queue.has(threadId);
     if (isFirst) socket.emit("agent_working", { working: true });
 
     queue.enqueue(threadId, async () => {
-      const context = contextStore.get(threadId);
-      const runner = getAgentRunner(threadId);
+      const context = getOrCreateContext(threadId, agentId);
+      const runner = getAgentRunner(threadId, agentId);
       const stream = runner(message, {
         threadId,
+        agent_id: agentId,
         context,
+        attachments,
         emitLocalTool: makeEmitLocalTool(socket, threadId),
         localToolRegistry,
       });
@@ -388,9 +423,32 @@ export function createAgentSocketListener<TContext>(
     if (threadId) socket.join(threadId);
 
     // -----------------------------------------------------------------------
+    // Per-socket mutable state
+    // -----------------------------------------------------------------------
+    let socketAgentId: string | undefined;
+    let effectiveTimeoutMs = 0;
+    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+    type StagingState = { correlationId: string; count: number; staged: Map<number, Attachment> };
+    let staging: StagingState | null = null;
+
+    function resetInactivityTimer(): void {
+      if (effectiveTimeoutMs <= 0) return;
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        socket.emit("inactive_close", { reason: "Inactivity timeout" });
+        socket.disconnect();
+      }, effectiveTimeoutMs);
+    }
+
+    socket.on("disconnect", () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = null;
+    });
+
+    // -----------------------------------------------------------------------
     // client_hello — version handshake
     // -----------------------------------------------------------------------
-    socket.on("client_hello", (payload: { version?: ProtocolVersion }) => {
+    socket.on("client_hello", (payload: { version?: ProtocolVersion; agent_id?: string; inactivity_timeout_ms?: number }) => {
       const clientVersion = payload?.version;
       if (
         !clientVersion ||
@@ -410,7 +468,28 @@ export function createAgentSocketListener<TContext>(
         clientVersion.minor <= PROTOCOL_VERSION.minor;
 
       if (compatible) {
-        socket.emit("welcome", { server_version: PROTOCOL_VERSION });
+        socketAgentId = typeof payload.agent_id === "string" ? payload.agent_id : undefined;
+        // Compute the effective inactivity timeout.
+        const clientTimeoutMs =
+          typeof payload.inactivity_timeout_ms === "number" && payload.inactivity_timeout_ms > 0
+            ? payload.inactivity_timeout_ms
+            : 0;
+        if (clientTimeoutMs > 0) {
+          effectiveTimeoutMs =
+            serverInactivityTimeoutMs !== undefined
+              ? Math.min(clientTimeoutMs, serverInactivityTimeoutMs)
+              : clientTimeoutMs;
+        } else if (serverInactivityTimeoutMs !== undefined && serverInactivityTimeoutMs > 0) {
+          effectiveTimeoutMs = serverInactivityTimeoutMs;
+        }
+        socket.emit("welcome", {
+          server_version: PROTOCOL_VERSION,
+          capabilities: {
+            max_message_size_bytes: maxMessageSizeBytes,
+            inactivity_timeout_ms: effectiveTimeoutMs,
+          },
+        });
+        if (effectiveTimeoutMs > 0) resetInactivityTimer();
       } else {
         socket.emit("version_not_supported", {
           server_version: PROTOCOL_VERSION,
@@ -421,29 +500,104 @@ export function createAgentSocketListener<TContext>(
     });
 
     // -----------------------------------------------------------------------
-    // message
+    // start_attachments
     // -----------------------------------------------------------------------
-    socket.on("message", (payload: { text?: string; context?: Record<string, unknown> }) => {
-      if (!threadId) {
-        socket.emit("error", { message: "Missing threadId" });
+    socket.on("start_attachments", (payload: { correlation_id?: string; count?: number }) => {
+      const correlationId = typeof payload?.correlation_id === "string" ? payload.correlation_id : "";
+      const count = typeof payload?.count === "number" ? Math.floor(payload.count) : 0;
+      if (!correlationId || count < 1) {
+        socket.emit("error", { message: "start_attachments: invalid payload" });
         return;
       }
-      const text = typeof payload?.text === "string" ? payload.text.trim() : "";
-      if (!text) return;
-
-      // Ensure context exists before the run; apply inline context if provided.
-      const ctx = getOrCreateContext(threadId);
-      if (
-        onContextUpdate &&
-        payload?.context !== null &&
-        payload?.context !== undefined &&
-        typeof payload.context === "object"
-      ) {
-        onContextUpdate(ctx, payload.context, threadId);
-      }
-
-      enqueueRun(socket, threadId, text);
+      // Replace any previous staging session.
+      staging = { correlationId, count, staged: new Map() };
+      resetInactivityTimer();
     });
+
+    // -----------------------------------------------------------------------
+    // attachment
+    // -----------------------------------------------------------------------
+    socket.on(
+      "attachment",
+      (payload: { correlation_id?: string; seq?: number; type?: string; body?: string; name?: string }) => {
+        const correlationId = typeof payload?.correlation_id === "string" ? payload.correlation_id : "";
+        const seq = typeof payload?.seq === "number" ? payload.seq : -1;
+        const type = payload?.type;
+        const body = typeof payload?.body === "string" ? payload.body : "";
+        if (!staging || staging.correlationId !== correlationId) {
+          socket.emit("error", { message: "attachment: no active attachment sequence for this correlation_id" });
+          return;
+        }
+        if (seq < 0 || seq >= staging.count) {
+          socket.emit("error", { message: "attachment: seq out of range" });
+          return;
+        }
+        if (type !== "image" && type !== "markdown") {
+          socket.emit("error", { message: "attachment: invalid type" });
+          return;
+        }
+        if (body.length > maxMessageSizeBytes) {
+          socket.emit("error", { message: "attachment: body exceeds max_message_size_bytes" });
+          return;
+        }
+        // Idempotent: re-ack without double-storing.
+        if (!staging.staged.has(seq)) {
+          staging.staged.set(seq, {
+            type: type as "image" | "markdown",
+            body,
+            name: typeof payload.name === "string" ? payload.name : undefined,
+          });
+        }
+        socket.emit("attachment_ack", { correlation_id: correlationId, seq });
+        resetInactivityTimer();
+      }
+    );
+
+    // -----------------------------------------------------------------------
+    // message
+    // -----------------------------------------------------------------------
+    socket.on(
+      "message",
+      (payload: { text?: string; context?: Record<string, unknown>; attachment_correlation_id?: string }) => {
+        if (!threadId) {
+          socket.emit("error", { message: "Missing threadId" });
+          return;
+        }
+        const text = typeof payload?.text === "string" ? payload.text.trim() : "";
+        if (!text) return;
+
+        // Ensure context exists before the run; apply inline context if provided.
+        const ctx = getOrCreateContext(threadId, socketAgentId);
+        if (
+          onContextUpdate &&
+          payload?.context !== null &&
+          payload?.context !== undefined &&
+          typeof payload.context === "object"
+        ) {
+          onContextUpdate(ctx, payload.context, threadId);
+        }
+
+        // Resolve attachment correlation if present.
+        let attachments: Attachment[] | undefined;
+        const correlationId =
+          typeof payload?.attachment_correlation_id === "string"
+            ? payload.attachment_correlation_id
+            : undefined;
+        if (correlationId && staging && staging.correlationId === correlationId) {
+          if (staging.staged.size === staging.count) {
+            // Order by seq and consume the staging session.
+            attachments = Array.from({ length: staging.count }, (_, i) => staging!.staged.get(i)!);
+          } else {
+            socket.emit("error", { message: "Attachment sequence incomplete" });
+            staging = null;
+            return;
+          }
+        }
+        staging = null; // consume regardless of correlation match
+        resetInactivityTimer();
+        enqueueRun(socket, threadId, text, socketAgentId, attachments);
+      }
+    );
 
     // -----------------------------------------------------------------------
     // local_tool_response
@@ -452,6 +606,7 @@ export function createAgentSocketListener<TContext>(
       if (!threadId) return;
 
       const nowMs = Date.now();
+      resetInactivityTimer();
       const expired = localToolRegistry.clearExpired(threadId, nowMs);
       if (expired.removedCount > 0) {
         console.log("[agent-streemr] expired local_tool entries cleared", {
@@ -470,7 +625,7 @@ export function createAgentSocketListener<TContext>(
       }
 
       const { requestId, toolName, status, responseJson, errorMessage } = parsed;
-      const ctx = getOrCreateContext(threadId);
+      const ctx = getOrCreateContext(threadId, socketAgentId);
 
       const result = localToolRegistry.handleResponse({
         ctx,
@@ -527,7 +682,7 @@ export function createAgentSocketListener<TContext>(
         return;
       }
       if (onContextUpdate) {
-        const ctx = getOrCreateContext(threadId);
+        const ctx = getOrCreateContext(threadId, socketAgentId);
         onContextUpdate(ctx, payload.data, threadId);
       }
     });
@@ -543,7 +698,7 @@ export function createAgentSocketListener<TContext>(
 
       // Let any active run finish, then clear
       queue.enqueue(threadId, async () => {
-        contextStore.delete(threadId);
+        contextStore.delete(contextKey(threadId, socketAgentId));
         fireAndForgetByThread.delete(threadId);
         localToolRegistry.clearThread(threadId);
         queue.clear(threadId);

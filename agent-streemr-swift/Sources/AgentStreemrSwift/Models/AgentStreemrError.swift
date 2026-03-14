@@ -12,6 +12,8 @@ public enum AgentStreemrError: Error, LocalizedError, Sendable {
     case serverError(String)
     /// A local tool handler threw an unexpected error.
     case toolHandlerError(String)
+    /// Server did not acknowledge all attachments within the configured timeout.
+    case attachmentAckTimeout
 
     public var errorDescription: String? {
         switch self {
@@ -25,6 +27,8 @@ public enum AgentStreemrError: Error, LocalizedError, Sendable {
             return "Server error: \(message)"
         case .toolHandlerError(let message):
             return "Tool handler error: \(message)"
+        case .attachmentAckTimeout:
+            return "Attachment upload timed out: server did not acknowledge all attachments in time."
         }
     }
 }

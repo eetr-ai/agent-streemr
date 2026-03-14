@@ -26,6 +26,8 @@ export type {
   WelcomePayload,
   VersionNotSupportedPayload,
   AgentWorkingPayload,
+  Attachment,
+  InactiveClosePayload,
   ClientToServerEvents,
   ServerToClientEvents,
 } from "@eetr/agent-streemr";
@@ -78,6 +80,23 @@ export type UseAgentStreamOptions = {
    * `auth` is reserved — set `url` and `token` above instead.
    */
   socketOptions?: Partial<Omit<ManagerOptions & SocketOptions, "auth">>;
+  /**
+   * Optional agent identifier forwarded to the server in `client_hello.agent_id`.
+   * The server's `getAgentRunner` callback receives this value and can use it to
+   * route threads to different agent implementations.
+   */
+  agentId?: string;
+  /**
+   * Requested inactivity timeout in milliseconds sent in `client_hello.inactivity_timeout_ms`.
+   * The server may cap this value; the negotiated effective timeout is reflected in
+   * `serverCapabilities.inactivity_timeout_ms`. Omit or set to `0` to request no timeout.
+   */
+  inactivityTimeoutMs?: number;
+  /**
+   * How long (in ms) to wait for an `attachment_ack` from the server before
+   * treating an attachment upload as failed. Defaults to `10_000` (10 s).
+   */
+  attachmentAckTimeoutMs?: number;
 };
 
 /** Full return value of `useAgentStream`. */
@@ -93,8 +112,11 @@ export type UseAgentStreamResult = {
   /**
    * Optimistically push a user message and emit `message` to the server.
    * Also clears the current `internalThought`.
+   * When `attachments` are provided, performs the multi-step upload handshake
+   * (`start_attachments` → N×`attachment` → wait for acks → `message`).
    */
-  sendMessage: (text: string) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sendMessage: (text: string, context?: Record<string, any>, attachments?: import("@eetr/agent-streemr").Attachment[]) => void;
   /** Emit `clear_context`; on `context_cleared` confirmation messages are wiped locally too. */
   clearContext: () => void;
   /**
@@ -128,6 +150,20 @@ export type UseAgentStreamResult = {
    * `undefined` before the handshake completes.
    */
   serverVersion?: import("@eetr/agent-streemr").ProtocolVersion;
+  /**
+   * Server-reported capabilities received in the `welcome` event.
+   * `undefined` before the handshake completes.
+   */
+  serverCapabilities?: {
+    max_message_size_bytes: number;
+    inactivity_timeout_ms: number;
+  };
+  /**
+   * When set, the server closed the connection due to inactivity.
+   * Contains the reason string from the `inactive_close` event.
+   * Cleared on the next successful `connect()` call.
+   */
+  inactiveCloseReason: string | null;
   /**
    * The raw typed Socket.io socket instance, or `null` before `connect()` is called.
    * Pass this to `useLocalToolHandler` to compose tool handling.

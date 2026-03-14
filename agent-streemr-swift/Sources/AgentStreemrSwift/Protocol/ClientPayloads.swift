@@ -2,8 +2,23 @@ import Foundation
 
 // MARK: - client_hello
 
-struct ClientHelloPayload: Encodable {
+struct ClientHelloPayload {
     let version: ProtocolVersion
+    let agentId: String?
+    let inactivityTimeoutMs: Int?
+
+    func toSocketData() -> [String: Any] {
+        var dict: [String: Any] = [
+            "version": ["major": version.major, "minor": version.minor]
+        ]
+        if let agentId {
+            dict["agent_id"] = agentId
+        }
+        if let inactivityTimeoutMs, inactivityTimeoutMs > 0 {
+            dict["inactivity_timeout_ms"] = inactivityTimeoutMs
+        }
+        return dict
+    }
 }
 
 // MARK: - message
@@ -11,11 +26,73 @@ struct ClientHelloPayload: Encodable {
 struct MessagePayload {
     let text: String
     let context: [String: Any]?
+    let attachmentCorrelationId: String?
+
+    init(text: String, context: [String: Any]? = nil, attachmentCorrelationId: String? = nil) {
+        self.text = text
+        self.context = context
+        self.attachmentCorrelationId = attachmentCorrelationId
+    }
 
     func toSocketData() -> [String: Any] {
         var dict: [String: Any] = ["text": text]
         if let context {
             dict["context"] = context
+        }
+        if let attachmentCorrelationId {
+            dict["attachment_correlation_id"] = attachmentCorrelationId
+        }
+        return dict
+    }
+}
+
+// MARK: - Attachment
+
+/// An attachment content object carried by the multi-step upload protocol.
+public struct Attachment: Sendable {
+    /// `"image"` for raster images or `"markdown"` for Markdown text files.
+    public let type: String
+    /// The file content encoded as a Base64 string.
+    public let body: String
+    /// Optional filename or human-readable label.
+    public let name: String?
+
+    public init(type: String, body: String, name: String? = nil) {
+        self.type = type
+        self.body = body
+        self.name = name
+    }
+}
+
+// MARK: - start_attachments
+
+struct StartAttachmentsPayload {
+    let correlationId: String
+    let count: Int
+
+    func toSocketData() -> [String: Any] {
+        return ["correlation_id": correlationId, "count": count]
+    }
+}
+
+// MARK: - attachment (individual upload)
+
+struct AttachmentUploadPayload {
+    let correlationId: String
+    let seq: Int
+    let type: String
+    let body: String
+    let name: String?
+
+    func toSocketData() -> [String: Any] {
+        var dict: [String: Any] = [
+            "correlation_id": correlationId,
+            "seq": seq,
+            "type": type,
+            "body": body
+        ]
+        if let name {
+            dict["name"] = name
         }
         return dict
     }

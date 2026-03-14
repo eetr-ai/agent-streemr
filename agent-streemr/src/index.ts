@@ -32,6 +32,7 @@ export type {
   StartAttachmentsPayload,
   AttachmentPayload,
   AttachmentAckPayload,
+  InactiveClosePayload,
   InternalTokenPayload,
   LocalToolPayload,
   LocalToolResponseAckPayload,
@@ -62,7 +63,6 @@ export type {
   AgentStreamEvent,
   InternalTokenEvent,
   AgentResponseEvent,
-  ResponseReferenceEvent,
 } from "./protocol/stream.js";
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@
 import { useCallback, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import type {
+  Attachment,
   ClientToServerEvents,
   ProtocolVersion,
   ServerToClientEvents,
@@ -54,7 +55,7 @@ const CLIENT_PROTOCOL_VERSION: ProtocolVersion = { major: 1, minor: 0 };
  * ```
  */
 export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamResult {
-  const { url, token, socketOptions } = options;
+  const { url, token, socketOptions, agentId, inactivityTimeoutMs, attachmentAckTimeoutMs = 10_000 } = options;
 
   // Stable ref — changes do NOT trigger re-renders.
   const socketRef = useRef<AgentSocket | null>(null);
@@ -67,6 +68,15 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
   const [error, setError] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState<boolean>(false);
   const [serverVersion, setServerVersion] = useState<ProtocolVersion | undefined>(undefined);
+  const [serverCapabilities, setServerCapabilities] = useState<
+    { max_message_size_bytes: number; inactivity_timeout_ms: number } | undefined
+  >(undefined);
+  const [inactiveCloseReason, setInactiveCloseReason] = useState<string | null>(null);
+
+  // Tracks pending attachment ack waiters keyed by correlation_id.
+  const pendingAcksRef = useRef<
+    Map<string, { pending: Set<number>; resolve: () => void; reject: (err: Error) => void }>
+  >(new Map());
 
   // ---------------------------------------------------------------------------
   // Attach all server-event listeners to a freshly created socket.
@@ -75,7 +85,11 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     socket.on("connect", () => {
       setStatus("connected");
       setError(null);
-      socket.emit("client_hello", { version: CLIENT_PROTOCOL_VERSION });
+      const hello: Record<string, unknown> = { version: CLIENT_PROTOCOL_VERSION };
+      if (agentId !== undefined) hello.agent_id = agentId;
+      if (inactivityTimeoutMs !== undefined && inactivityTimeoutMs > 0)
+        hello.inactivity_timeout_ms = inactivityTimeoutMs;
+      socket.emit("client_hello", hello as Parameters<ClientToServerEvents["client_hello"]>[0]);
     });
 
     socket.on("disconnect", () => {
@@ -84,8 +98,26 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
       setIsWorking(false);
     });
 
-    socket.on("welcome", ({ server_version }) => {
+    socket.on("welcome", ({ server_version, capabilities }) => {
       setServerVersion(server_version);
+      setServerCapabilities(capabilities);
+    });
+
+    socket.on("inactive_close", ({ reason }) => {
+      setInactiveCloseReason(reason);
+      setStatus("disconnected");
+      setIsStreaming(false);
+      setIsWorking(false);
+    });
+
+    socket.on("attachment_ack", ({ correlation_id, seq }) => {
+      const entry = pendingAcksRef.current.get(correlation_id);
+      if (!entry) return;
+      entry.pending.delete(seq);
+      if (entry.pending.size === 0) {
+        pendingAcksRef.current.delete(correlation_id);
+        entry.resolve();
+      }
     });
 
     socket.on("version_not_supported", ({ server_version, client_version }) => {
@@ -150,7 +182,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
       setError(message);
       setIsStreaming(false);
     });
-  }, []);
+  }, [agentId, inactivityTimeoutMs]);
 
   // ---------------------------------------------------------------------------
   // Tear down the current socket (if any) without resetting conversation state.
@@ -173,6 +205,7 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
       detachSocket();
       setStatus("connecting");
       setError(null);
+      setInactiveCloseReason(null);
 
       const socket: AgentSocket = io(url, {
         ...socketOptions,
@@ -195,11 +228,14 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     setIsStreaming(false);
     setIsWorking(false);
     setServerVersion(undefined);
+    setServerCapabilities(undefined);
+    setInactiveCloseReason(null);
     setError(null);
     setStatus("disconnected");
   }, [detachSocket]);
 
-  const sendMessage = useCallback((text: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sendMessage = useCallback((text: string, context?: Record<string, any>, attachments?: Attachment[]) => {
     const socket = socketRef.current;
     if (!socket?.connected) return;
 
@@ -215,8 +251,43 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     setInternalThought("");
     setIsStreaming(true);
 
-    socket.emit("message", { text });
-  }, []);
+    if (!attachments || attachments.length === 0) {
+      socket.emit("message", { text, ...(context !== undefined ? { context } : {}) });
+      return;
+    }
+
+    // Multi-step attachment upload: start_attachments → N×attachment → wait for acks → message.
+    void (async () => {
+      const correlationId = randomId();
+      const timeout = attachmentAckTimeoutMs;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const pending = new Set(attachments.map((_, i) => i));
+          const timer = setTimeout(() => {
+            pendingAcksRef.current.delete(correlationId);
+            reject(new Error("Attachment ack timeout"));
+          }, timeout);
+          pendingAcksRef.current.set(correlationId, {
+            pending,
+            resolve: () => { clearTimeout(timer); resolve(); },
+            reject: (err) => { clearTimeout(timer); reject(err); },
+          });
+          socket.emit("start_attachments", { correlation_id: correlationId, count: attachments.length });
+          attachments.forEach((att, i) => {
+            socket.emit("attachment", { correlation_id: correlationId, seq: i, ...att });
+          });
+        });
+        socket.emit("message", {
+          text,
+          ...(context !== undefined ? { context } : {}),
+          attachment_correlation_id: correlationId,
+        });
+      } catch (err) {
+        setError(String(err));
+        setIsStreaming(false);
+      }
+    })();
+  }, [attachmentAckTimeoutMs]);
 
   const clearContext = useCallback(() => {
     const socket = socketRef.current;
@@ -243,6 +314,8 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     isStreaming,
     isWorking,
     serverVersion,
+    serverCapabilities,
+    inactiveCloseReason,
     error,
     socket: socketRef.current,
   };

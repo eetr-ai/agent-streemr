@@ -45,6 +45,13 @@ public final class AgentStream {
     /// The protocol version reported by the server after a successful handshake.
     public private(set) var serverVersion: ProtocolVersion? = nil
 
+    /// Server-reported capabilities received in the `welcome` event. `nil` before the handshake.
+    public private(set) var serverCapabilities: WelcomeCapabilities? = nil
+
+    /// When set, the server closed the connection due to inactivity.
+    /// Contains the reason string from the `inactive_close` event.
+    public private(set) var inactiveCloseReason: String? = nil
+
     // MARK: - Combine Publishers
 
     private let _statusSubject = PassthroughSubject<ConnectionStatus, Never>()
@@ -78,6 +85,8 @@ public final class AgentStream {
     /// Stored as a nonisolated reference; mutated only from the main actor.
     private var socket: (any AgentSocketProtocol)?
     private var localToolCoordinator: LocalToolCoordinator?
+    /// Pending attachment ack waiters: correlationId → (remainingSeqs, resolve, reject).
+    private var pendingAttachmentAcks: [String: (pending: Set<Int>, resolve: () -> Void, reject: (Error) -> Void)] = [:]
 
     // MARK: - Init
 
@@ -121,15 +130,82 @@ public final class AgentStream {
     /// - Parameters:
     ///   - text: The message text.
     ///   - context: Optional inline context merged into the server's per-thread context for this turn.
-    public func sendMessage(_ text: String, context: [String: Any]? = nil) {
+    ///   - attachments: Optional attachments to upload before sending the message.
+    ///     Performs the multi-step `start_attachments` → N×`attachment` → wait-for-acks → `message` handshake.
+    public func sendMessage(_ text: String, context: [String: Any]? = nil, attachments: [Attachment]? = nil) {
         guard let socket, socket.isConnected else { return }
         let userMsg = AgentMessage(role: .user, content: text)
         messages.append(userMsg)
         internalThought = ""
         isStreaming = true
-        let payload = MessagePayload(text: text, context: context)
-        socket.emit(SocketEvent.message, with: [payload.toSocketData()])
         publishAll()
+
+        let hasAttachments = attachments?.isEmpty == false
+        if hasAttachments, let attachments {
+            let capturedSocket = socket
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let correlationId = try await self.uploadAttachments(attachments: attachments, to: capturedSocket)
+                    guard self.socket === capturedSocket else { return } // socket replaced
+                    let payload = MessagePayload(text: text, context: context, attachmentCorrelationId: correlationId)
+                    capturedSocket.emit(SocketEvent.message, with: [payload.toSocketData()])
+                } catch {
+                    self.status = .error(error.localizedDescription)
+                    self.isStreaming = false
+                    self.publishAll()
+                }
+            }
+        } else {
+            let payload = MessagePayload(text: text, context: context)
+            socket.emit(SocketEvent.message, with: [payload.toSocketData()])
+        }
+    }
+
+    /// Uploads a sequence of attachments and returns the correlation ID once all acks are received.
+    private func uploadAttachments(attachments: [Attachment], to socket: any AgentSocketProtocol) async throws -> String {
+        let correlationId = UUID().uuidString
+        let timeoutSeconds = configuration.attachmentAckTimeoutSeconds
+        try await withCheckedThrowingContinuation { continuation in
+            var resolved = false
+            var timeoutTask: Task<Void, Never>?
+
+            self.pendingAttachmentAcks[correlationId] = (
+                pending: Set(0 ..< attachments.count),
+                resolve: {
+                    guard !resolved else { return }
+                    resolved = true
+                    timeoutTask?.cancel()
+                    continuation.resume(returning: ())
+                },
+                reject: { err in
+                    guard !resolved else { return }
+                    resolved = true
+                    timeoutTask?.cancel()
+                    continuation.resume(throwing: err)
+                }
+            )
+
+            timeoutTask = Task { @MainActor [weak self] in
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                } catch { return } // cancelled
+                guard let self, !resolved,
+                      let entry = self.pendingAttachmentAcks.removeValue(forKey: correlationId) else { return }
+                entry.reject(AgentStreemrError.attachmentAckTimeout)
+            }
+
+            let startPayload = StartAttachmentsPayload(correlationId: correlationId, count: attachments.count)
+            socket.emit(SocketEvent.startAttachments, with: [startPayload.toSocketData()])
+            for (i, attachment) in attachments.enumerated() {
+                let attPayload = AttachmentUploadPayload(
+                    correlationId: correlationId, seq: i,
+                    type: attachment.type, body: attachment.body, name: attachment.name
+                )
+                socket.emit(SocketEvent.attachment, with: [attPayload.toSocketData()])
+            }
+        }
+        return correlationId
     }
 
     /// Ask the server to clear the current thread's context and conversation history.
@@ -207,7 +283,32 @@ public final class AgentStream {
             Task { @MainActor [weak self] in
                 guard let payload = decodeSocketData(WelcomePayload.self, from: data) else { return }
                 self?.serverVersion = payload.serverVersion
+                self?.serverCapabilities = payload.capabilities
                 self?.publishAll()
+            }
+        }
+        socket.on(SocketEvent.inactiveClose) { [weak self] data in
+            Task { @MainActor [weak self] in
+                guard let payload = decodeSocketData(InactiveClosePayload.self, from: data) else { return }
+                self?.inactiveCloseReason = payload.reason
+                self?.status = .disconnected
+                self?.isStreaming = false
+                self?.isWorking = false
+                self?.publishAll()
+            }
+        }
+        socket.on(SocketEvent.attachmentAck) { [weak self] data in
+            guard let payload = decodeSocketData(AttachmentAckPayload.self, from: data) else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard var entry = self.pendingAttachmentAcks[payload.correlationId] else { return }
+                entry.pending.remove(payload.seq)
+                if entry.pending.isEmpty {
+                    self.pendingAttachmentAcks.removeValue(forKey: payload.correlationId)
+                    entry.resolve()
+                } else {
+                    self.pendingAttachmentAcks[payload.correlationId] = entry
+                }
             }
         }
         socket.on(SocketEvent.versionNotSupported) { [weak self] data in
@@ -290,13 +391,12 @@ public final class AgentStream {
     private func handleConnect() {
         status = .connected
         // Immediately emit client_hello to initiate protocol version negotiation
-        let helloDict: [String: Any] = [
-            "version": [
-                "major": ProtocolVersion.client.major,
-                "minor": ProtocolVersion.client.minor
-            ]
-        ]
-        socket?.emit(SocketEvent.clientHello, with: [helloDict])
+        let hello = ClientHelloPayload(
+            version: ProtocolVersion.client,
+            agentId: configuration.agentId,
+            inactivityTimeoutMs: configuration.inactivityTimeoutMs
+        )
+        socket?.emit(SocketEvent.clientHello, with: [hello.toSocketData()])
         publishAll()
     }
 
@@ -364,6 +464,9 @@ public final class AgentStream {
         isStreaming = false
         isWorking = false
         serverVersion = nil
+        serverCapabilities = nil
+        inactiveCloseReason = nil
+        pendingAttachmentAcks.removeAll()
     }
 
     private func publishAll() {

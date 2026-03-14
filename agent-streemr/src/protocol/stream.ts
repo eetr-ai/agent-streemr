@@ -42,21 +42,6 @@ export type AgentResponseEvent = {
 };
 
 /**
- * A reference resource the agent used while composing its reply.
- * The client can use `refType` + `slug` to construct a deep-link URL,
- * and `title` to display a human-readable label.
- */
-export type ResponseReferenceEvent = {
-  type: "response_reference";
-  /** Logical category of the reference (e.g. `"article"`, `"exercise"`). */
-  refType: string;
-  /** URL-safe identifier for the referenced resource. */
-  slug: string;
-  /** Human-readable title for the reference. */
-  title: string;
-};
-
-/**
  * Discriminated union of all events an agent async generator may yield.
  *
  * Consumed by `AgentStreamAdapter.run()` which maps each variant to the
@@ -66,9 +51,7 @@ export type ResponseReferenceEvent = {
  * |----------------------|---------------------------|
  * | `internal_token`     | `internal_token`          |
  * | `agent_response`     | `agent_response`          |
- * | `response_reference` | `response_reference`      |
  */
 export type AgentStreamEvent =
   | InternalTokenEvent
-  | AgentResponseEvent
-  | ResponseReferenceEvent;
+  | AgentResponseEvent;
