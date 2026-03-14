@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import AgentStreemrSwift
 
 // MARK: - Models
 
@@ -59,5 +60,39 @@ final class ToolCallLogViewModel {
 
     func clear() {
         entries.removeAll()
+    }
+
+    /// Wraps a local tool handler to log start/end and status to this view model.
+    func wrap(_ toolName: String, _ handler: @escaping LocalToolHandler) -> LocalToolHandler {
+        return { [weak self] args in
+            guard let self else { return .error(message: "Tool call log unavailable") }
+            let logId = UUID().uuidString
+            let argsStr: String
+            if let data = try? JSONSerialization.data(withJSONObject: args),
+               let str = String(data: data, encoding: .utf8) {
+                argsStr = str
+            } else {
+                argsStr = String(describing: args)
+            }
+            await MainActor.run {
+                self.append(ToolCallEntry(id: logId, toolName: toolName, arguments: argsStr, status: .pending, startedAt: Date(), endedAt: nil))
+            }
+            let result: LocalToolHandlerResult
+            do {
+                result = try await handler(args)
+            } catch {
+                result = .error(message: error.localizedDescription)
+            }
+            let status: ToolCallStatus = switch result {
+            case .success: .success
+            case .denied: .failure("Denied")
+            case .notSupported: .failure("Not supported")
+            case .error(let msg): .failure(msg ?? "Unknown error")
+            }
+            await MainActor.run {
+                self.update(id: logId, status: status, endedAt: Date())
+            }
+            return result
+        }
     }
 }

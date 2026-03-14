@@ -46,12 +46,10 @@ final class ChatViewModel {
             reconnect(stream: stream)
             return
         }
-        Task {
-            let attachments: [Attachment]? = att.map {
-                [Attachment(type: $0.mimeType, body: $0.data.base64EncodedString(), name: $0.name)]
-            }
-            try? await stream.sendMessage(text, attachments: attachments)
+        let attachments: [Attachment]? = att.map {
+            [Attachment(type: $0.mimeType, body: $0.data.base64EncodedString(), name: $0.name)]
         }
+        stream.sendMessage(text, attachments: attachments)
     }
 
     func connect(to stream: AgentStream) {
@@ -62,7 +60,7 @@ final class ChatViewModel {
                     let attachments: [Attachment]? = pending.attachment.map {
                         [Attachment(type: $0.mimeType, body: $0.data.base64EncodedString(), name: $0.name)]
                     }
-                    try? await stream.sendMessage(pending.text, attachments: attachments)
+                    stream.sendMessage(pending.text, attachments: attachments)
                     pendingSend = nil
                 }
             }
@@ -71,14 +69,5 @@ final class ChatViewModel {
 
     func reconnect(stream: AgentStream) {
         stream.connect(threadId: threadId)
-    }
-
-    // Attachment helper: stage photo from PhotosPickerItem
-    @MainActor
-    func stagePhoto(item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-        let mimeType = "image/jpeg" // TODO: detect type
-        let name = item.itemIdentifier ?? "photo.jpg"
-        pendingAttachment = PendingAttachment(data: data, mimeType: mimeType, name: name)
     }
 }

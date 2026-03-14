@@ -150,6 +150,26 @@ public actor LocalToolCoordinator {
         }
     }
 
+    // MARK: - Approved execution (for approval UI flow)
+
+    /// Run a registered handler and return the response dictionary to send to the server.
+    /// Used when the user has approved a tool request; the stream will emit the result.
+    /// - Returns: The response dict, or `nil` if the tool is not registered.
+    public func runHandlerAndBuildResponse(
+        toolName: String,
+        args: [String: Any],
+        requestId: String
+    ) async -> [String: Any]? {
+        guard let reg = registrations[toolName] else { return nil }
+        let result: LocalToolHandlerResult
+        do {
+            result = try await reg.handler(args)
+        } catch {
+            result = .error(message: error.localizedDescription)
+        }
+        return buildResponseDict(result, requestId: requestId, toolName: toolName)
+    }
+
     // MARK: - Acknowledgement
 
     /// Handle an incoming `local_tool_response_ack` event.

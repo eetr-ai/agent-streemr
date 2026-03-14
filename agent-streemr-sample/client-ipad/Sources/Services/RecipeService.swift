@@ -43,6 +43,9 @@ final class RecipeService {
 
     private let repository: any RecipeRepository
 
+    /// Incremented whenever recipes are created, saved, or deleted so views can refresh.
+    private(set) var recipesModifiedVersion: Int = 0
+
     init(repository: any RecipeRepository) {
         self.repository = repository
     }
@@ -66,8 +69,13 @@ final class RecipeService {
     /// Creates a new blank recipe in the repository and returns it.
     @discardableResult
     func create() throws -> Recipe {
-        do { return try repository.create() }
-        catch { throw RecipeServiceError.repositoryError(underlying: error) }
+        do {
+            let recipe = try repository.create()
+            recipesModifiedVersion += 1
+            return recipe
+        } catch {
+            throw RecipeServiceError.repositoryError(underlying: error)
+        }
     }
 
     /// Validates and persists changes to `recipe`.
@@ -91,8 +99,12 @@ final class RecipeService {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        do { try repository.save(recipe) }
-        catch { throw RecipeServiceError.repositoryError(underlying: error) }
+        do {
+            try repository.save(recipe)
+            recipesModifiedVersion += 1
+        } catch {
+            throw RecipeServiceError.repositoryError(underlying: error)
+        }
     }
 
     /// Deletes the recipe with the given `id`.
@@ -102,7 +114,11 @@ final class RecipeService {
         guard let _ = try? repository.recipe(id: id) else {
             throw RecipeServiceError.notFound(id: id)
         }
-        do { try repository.delete(id: id) }
-        catch { throw RecipeServiceError.repositoryError(underlying: error) }
+        do {
+            try repository.delete(id: id)
+            recipesModifiedVersion += 1
+        } catch {
+            throw RecipeServiceError.repositoryError(underlying: error)
+        }
     }
 }

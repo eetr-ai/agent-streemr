@@ -289,6 +289,20 @@ public final class AgentStream {
         emitProtocolEvent(SocketEvent.localToolResponse, direction: .outgoing, rawData: [dict])
     }
 
+    /// Run the registered handler for an approved tool request and send the result to the server.
+    /// Call this when the user (or allowlist) has approved a `local_tool` request.
+    public func executeApprovedTool(requestId: String, toolName: String, args: [String: Any]) async {
+        guard let coordinator = localToolCoordinator else { return }
+        let responseDict = await coordinator.runHandlerAndBuildResponse(
+            toolName: toolName,
+            args: args,
+            requestId: requestId
+        )
+        guard let responseDict else { return }
+        socket?.emit(SocketEvent.localToolResponse, with: [responseDict])
+        emitProtocolEvent(SocketEvent.localToolResponse, direction: .outgoing, rawData: [responseDict])
+    }
+
     // MARK: - Protocol Event Helper
 
     /// Fires a `ProtocolEventRecord` on `_protocolEventSubject`.
@@ -417,6 +431,13 @@ public final class AgentStream {
                 self?.isStreaming = false
                 self?.emitProtocolEvent(SocketEvent.error, direction: .incoming, rawData: data)
                 self?.publishAll()
+            }
+        }
+        socket.on(SocketEvent.localTool) { [weak self] data in
+            guard let payload = LocalToolPayload.decode(from: data) else { return }
+            Task { @MainActor [weak self] in
+                self?._localToolSubject.send(payload)
+                self?.emitProtocolEvent(SocketEvent.localTool, direction: .incoming, rawData: data)
             }
         }
         socket.on(SocketEvent.localToolResponseAck) { [weak self] data in

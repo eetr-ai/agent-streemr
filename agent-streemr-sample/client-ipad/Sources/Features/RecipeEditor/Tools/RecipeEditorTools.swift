@@ -9,12 +9,13 @@ import AgentStreemrSwift
 func registerRecipeEditorTools(
     on stream: AgentStream,
     recipeService: RecipeService,
-    photoStaging: PhotoStagingService
+    photoStaging: PhotoStagingService,
+    toolCallLog: ToolCallLogViewModel
 ) async {
 
     // MARK: recipe_create
 
-    await stream.registerTool("recipe_create") { [recipeService] args in
+    await stream.registerTool("recipe_create", handler: toolCallLog.wrap("recipe_create") { [recipeService] args in
         let result: LocalToolHandlerResult = await MainActor.run {
             do {
                 let recipe = try recipeService.create()
@@ -31,11 +32,11 @@ func registerRecipeEditorTools(
             }
         }
         return result
-    }
+    })
 
     // MARK: recipe_set_title
 
-    await stream.registerTool("recipe_set_title") { [recipeService] args in
+    await stream.registerTool("recipe_set_title", handler: toolCallLog.wrap("recipe_set_title") { [recipeService] args in
         guard let id = args["id"] as? String,
               let name = args["name"] as? String else {
             return .error(message: "Missing 'id' or 'name'")
@@ -48,11 +49,11 @@ func registerRecipeEditorTools(
             return .success(responseJSON: ["ok": true, "id": recipe.id, "name": recipe.name])
         }
         return result
-    }
+    })
 
     // MARK: recipe_set_description
 
-    await stream.registerTool("recipe_set_description") { [recipeService] args in
+    await stream.registerTool("recipe_set_description", handler: toolCallLog.wrap("recipe_set_description") { [recipeService] args in
         guard let id = args["id"] as? String,
               let description = args["description"] as? String else {
             return .error(message: "Missing 'id' or 'description'")
@@ -65,11 +66,11 @@ func registerRecipeEditorTools(
             return .success(responseJSON: ["ok": true, "id": recipe.id])
         }
         return result
-    }
+    })
 
     // MARK: recipe_set_ingredients
 
-    await stream.registerTool("recipe_set_ingredients") { [recipeService] args in
+    await stream.registerTool("recipe_set_ingredients", handler: toolCallLog.wrap("recipe_set_ingredients") { [recipeService] args in
         guard let id = args["id"] as? String else {
             return .error(message: "Missing 'id'")
         }
@@ -112,11 +113,11 @@ func registerRecipeEditorTools(
             return .success(responseJSON: ["ok": true, "id": recipe.id, "count": recipe.ingredients.count])
         }
         return result
-    }
+    })
 
     // MARK: recipe_set_directions
 
-    await stream.registerTool("recipe_set_directions") { [recipeService] args in
+    await stream.registerTool("recipe_set_directions", handler: toolCallLog.wrap("recipe_set_directions") { [recipeService] args in
         guard let id = args["id"] as? String else {
             return .error(message: "Missing 'id'")
         }
@@ -162,13 +163,13 @@ func registerRecipeEditorTools(
             return .success(responseJSON: ["ok": true, "id": recipe.id, "steps": recipe.directions.count])
         }
         return result
-    }
+    })
 
     // MARK: recipe_save
 
     // In SwiftData, mutations are persisted automatically. This tool acts as
     // a validation checkpoint that also runs the service's trimming/validation.
-    await stream.registerTool("recipe_save") { [recipeService] args in
+    await stream.registerTool("recipe_save", handler: toolCallLog.wrap("recipe_save") { [recipeService] args in
         guard let id = args["id"] as? String else {
             return .error(message: "Missing 'id'")
         }
@@ -184,11 +185,11 @@ func registerRecipeEditorTools(
             }
         }
         return result
-    }
+    })
 
     // MARK: recipe_delete
 
-    await stream.registerTool("recipe_delete") { [recipeService] args in
+    await stream.registerTool("recipe_delete", handler: toolCallLog.wrap("recipe_delete") { [recipeService] args in
         guard let id = args["id"] as? String else {
             return .error(message: "Missing 'id'")
         }
@@ -201,11 +202,11 @@ func registerRecipeEditorTools(
             }
         }
         return result
-    }
+    })
 
     // MARK: recipe_set_photo
 
-    await stream.registerTool("recipe_set_photo") { [recipeService, photoStaging] args in
+    await stream.registerTool("recipe_set_photo", handler: toolCallLog.wrap("recipe_set_photo") { [recipeService, photoStaging] args in
         guard let id = args["id"] as? String else {
             return .error(message: "Missing 'id'")
         }
@@ -223,7 +224,7 @@ func registerRecipeEditorTools(
             return .success(responseJSON: ["ok": true, "id": recipe.id])
         }
         return result
-    }
+    })
 }
 
 // MARK: - Helpers

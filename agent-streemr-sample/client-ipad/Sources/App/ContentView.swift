@@ -10,7 +10,7 @@ struct ContentView: View {
                 }
             }
             Tab("Recipes", systemImage: "fork.knife") {
-                RecipeBrowserView()
+                RecipeTabView()
             }
             Tab("Tool Calls", systemImage: "wrench.and.screwdriver") {
                 NavigationStack {
@@ -28,4 +28,29 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+}
+
+private struct RecipeTabView: View {
+    @Environment(SelectedRecipeState.self) private var selectedRecipeState
+
+    var body: some View {
+        NavigationSplitView {
+            RecipeListView(selection: Binding(
+                get: { selectedRecipeState.selectedRecipeId },
+                set: { selectedRecipeState.selectedRecipeId = $0 }
+            ))
+        } detail: {
+            if let selectedRecipeId = selectedRecipeState.selectedRecipeId {
+                NavigationStack {
+                    RecipeEditorView(recipeId: selectedRecipeId)
+                }
+            } else {
+                ContentUnavailableView(
+                    "Select a Recipe",
+                    systemImage: "fork.knife",
+                    description: Text("Choose a recipe from the list to view or edit it.")
+                )
+            }
+        }
+    }
 }

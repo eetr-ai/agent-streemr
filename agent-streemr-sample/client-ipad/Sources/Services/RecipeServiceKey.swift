@@ -5,8 +5,9 @@ import SwiftUI
 private struct RecipeServiceKey: EnvironmentKey {
     /// A safe default so views that read the key in previews never crash.
     /// It uses an in-memory SwiftData store so no real data is touched.
-    @MainActor
-    static let defaultValue = RecipeService(repository: SwiftDataRecipeRepository(inMemory: true))
+    static let defaultValue: RecipeService = MainActor.assumeIsolated {
+        RecipeService(repository: SwiftDataRecipeRepository(inMemory: true))
+    }
 }
 
 // MARK: - EnvironmentValues extension

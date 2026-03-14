@@ -5,12 +5,18 @@ import AgentStreemrSwift
 ///
 /// - `recipe_list` — returns a summary of every recipe.
 /// - `recipe_get_state` — returns the full state of a single recipe by id.
+/// - `recipe_load` — selects a recipe in the UI by id (agent can surface a recipe in the viewer).
 @MainActor
-func registerRecipeListTools(on stream: AgentStream, recipeService: RecipeService) async {
+func registerRecipeListTools(
+    on stream: AgentStream,
+    recipeService: RecipeService,
+    selectedRecipeState: SelectedRecipeState,
+    toolCallLog: ToolCallLogViewModel
+) async {
 
     // MARK: recipe_list
 
-    await stream.registerTool("recipe_list") { [recipeService] _ in
+    await stream.registerTool("recipe_list", handler: toolCallLog.wrap("recipe_list") { [recipeService] _ in
         let summaries: [[String: Any]] = await MainActor.run {
             let recipes = (try? recipeService.allRecipes()) ?? []
             return recipes.map { r in
@@ -18,11 +24,11 @@ func registerRecipeListTools(on stream: AgentStream, recipeService: RecipeServic
             }
         }
         return .success(responseJSON: ["recipes": summaries])
-    }
+    })
 
     // MARK: recipe_get_state
 
-    await stream.registerTool("recipe_get_state") { [recipeService] args in
+    await stream.registerTool("recipe_get_state", handler: toolCallLog.wrap("recipe_get_state") { [recipeService] args in
         guard let id = args["id"] as? String else {
             return .error(message: "Missing 'id'")
         }
@@ -43,5 +49,20 @@ func registerRecipeListTools(on stream: AgentStream, recipeService: RecipeServic
             return .success(responseJSON: ["recipe": dict])
         }
         return result
-    }
+    })
+
+    // MARK: recipe_load
+
+    await stream.registerTool("recipe_load", handler: toolCallLog.wrap("recipe_load") { [recipeService, selectedRecipeState] args in
+        guard let id = args["id"] as? String else {
+            return .error(message: "Missing 'id'")
+        }
+        return await MainActor.run {
+            if (try? recipeService.recipe(id: id)) != nil {
+                selectedRecipeState.selectedRecipeId = id
+                return .success(responseJSON: ["id": id, "ok": true])
+            }
+            return .success(responseJSON: ["ok": false, "error": "Recipe not found: \(id)"])
+        }
+    })
 }

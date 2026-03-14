@@ -26,7 +26,7 @@ struct RecipeDetailView: View {
                 )
             }
         }
-        .task(id: recipeId) { load() }
+        .task(id: (recipeId, recipeService.recipesModifiedVersion)) { load() }
     }
 
     private func load() {

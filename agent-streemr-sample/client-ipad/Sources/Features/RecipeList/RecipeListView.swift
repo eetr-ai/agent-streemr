@@ -18,15 +18,28 @@ struct RecipeListView: View {
                     description: Text("Ask the agent to create one for you.")
                 )
             } else {
-                List(viewModel.recipes, selection: $selection) { recipe in
-                    RecipeRowView(recipe: recipe)
-                        .tag(recipe.id)
+                List(selection: $selection) {
+                    ForEach(viewModel.recipes) { recipe in
+                        RecipeRowView(recipe: recipe)
+                            .tag(recipe.id)
+                    }
+                    .onDelete(perform: deleteRecipes)
                 }
                 .listStyle(.sidebar)
             }
         }
         .navigationTitle("Recipes")
-        .task { viewModel.load(using: recipeService) }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    viewModel.load(using: recipeService)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Refresh recipe list")
+            }
+        }
+        .task(id: recipeService.recipesModifiedVersion) { viewModel.load(using: recipeService) }
         .alert("Error", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { _ in viewModel.dismissError() }
@@ -34,6 +47,13 @@ struct RecipeListView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+    }
+
+    private func deleteRecipes(at offsets: IndexSet) {
+        let idsToDelete = offsets.compactMap { viewModel.recipes.indices.contains($0) ? viewModel.recipes[$0].id : nil }
+        for id in idsToDelete {
+            viewModel.delete(id: id, using: recipeService)
         }
     }
 }
@@ -65,7 +85,7 @@ private struct TagChipRow: View {
             ForEach(tags.prefix(4), id: \.self) { tag in
                 Text(tag)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(.accent)
+                    .foregroundStyle(Color.accentColor)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(Color.accentColor.opacity(0.12), in: Capsule())

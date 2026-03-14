@@ -4,7 +4,7 @@ import Observation
 
 struct ToolApprovalCard: View {
     let approval: ToolApprovalService.PendingApproval
-    @ObservedObject var service: ToolApprovalService
+    let service: ToolApprovalService
     @Environment(AgentStream.self) private var stream
     @State private var remember = false
 
@@ -57,7 +57,7 @@ private struct ArgsList: View {
     let args: [String: Any]
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(args.keys.sorted(), id: \ .self) { key in
+            ForEach(args.keys.sorted(), id: \.self) { key in
                 HStack(spacing: 4) {
                     Text("\(key):")
                         .font(.caption2)
