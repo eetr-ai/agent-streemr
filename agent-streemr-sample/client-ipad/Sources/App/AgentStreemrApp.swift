@@ -22,6 +22,7 @@ struct AgentStreemrApp: App {
     @State private var toolApprovalService = ToolApprovalService()
     @State private var photoStagingService = PhotoStagingService()
     @State private var selectedRecipeState = SelectedRecipeState()
+    @State private var recipeEditorViewModel = RecipeEditorViewModel()
     @State private var toolCallLogViewModel = ToolCallLogViewModel()
     @State private var protocolLogViewModel = ProtocolLogViewModel()
 
@@ -33,6 +34,7 @@ struct AgentStreemrApp: App {
                 .environment(toolApprovalService)
                 .environment(\.photoStagingService, photoStagingService)
                 .environment(selectedRecipeState)
+                .environment(recipeEditorViewModel)
                 .environment(toolCallLogViewModel)
                 .environment(protocolLogViewModel)
                 .task {
@@ -41,6 +43,7 @@ struct AgentStreemrApp: App {
                         on: stream,
                         recipeService: recipeService,
                         selectedRecipeState: selectedRecipeState,
+                        recipeEditorViewModel: recipeEditorViewModel,
                         toolCallLog: toolCallLogViewModel
                     )
                     await registerRecipeEditorTools(
@@ -48,6 +51,7 @@ struct AgentStreemrApp: App {
                         recipeService: recipeService,
                         photoStaging: photoStagingService,
                         selectedRecipeState: selectedRecipeState,
+                        recipeEditorViewModel: recipeEditorViewModel,
                         toolCallLog: toolCallLogViewModel
                     )
                 }

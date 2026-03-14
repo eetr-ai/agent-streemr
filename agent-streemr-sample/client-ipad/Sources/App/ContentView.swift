@@ -124,6 +124,8 @@ private struct FloatingChatWindow: View {
 
 private struct RecipeTabView: View {
     @Environment(SelectedRecipeState.self) private var selectedRecipeState
+    @Environment(RecipeEditorViewModel.self) private var recipeEditorViewModel
+    @Environment(\.recipeService) private var recipeService
 
     var body: some View {
         NavigationSplitView {
@@ -132,9 +134,9 @@ private struct RecipeTabView: View {
                 set: { selectedRecipeState.selectedRecipeId = $0 }
             ))
         } detail: {
-            if let selectedRecipeId = selectedRecipeState.selectedRecipeId {
+            if recipeEditorViewModel.hasOpenRecipe {
                 NavigationStack {
-                    RecipeEditorView(recipeId: selectedRecipeId)
+                    RecipeEditorView()
                 }
             } else {
                 ContentUnavailableView(
@@ -143,6 +145,12 @@ private struct RecipeTabView: View {
                     description: Text("Choose a recipe from the list to view or edit it.")
                 )
             }
+        }
+        .onAppear {
+            recipeEditorViewModel.syncSelection(id: selectedRecipeState.selectedRecipeId, using: recipeService)
+        }
+        .onChange(of: selectedRecipeState.selectedRecipeId) { _, newId in
+            recipeEditorViewModel.syncSelection(id: newId, using: recipeService)
         }
     }
 }

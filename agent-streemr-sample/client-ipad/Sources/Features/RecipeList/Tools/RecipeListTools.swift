@@ -11,6 +11,7 @@ func registerRecipeListTools(
     on stream: AgentStream,
     recipeService: RecipeService,
     selectedRecipeState: SelectedRecipeState,
+    recipeEditorViewModel: RecipeEditorViewModel,
     toolCallLog: ToolCallLogViewModel
 ) async {
 
@@ -28,13 +29,23 @@ func registerRecipeListTools(
 
     // MARK: recipe_get_state
 
-    await stream.registerTool("recipe_get_state", handler: toolCallLog.wrap("recipe_get_state") { [recipeService] args in
-        guard let id = args["id"] as? String else {
-            return .error(message: "Missing 'id'")
-        }
+    await stream.registerTool("recipe_get_state", handler: toolCallLog.wrap("recipe_get_state") { [recipeService, recipeEditorViewModel] args in
+        let requestedId = args["id"] as? String
         let result: LocalToolHandlerResult = await MainActor.run {
-            guard let recipe = try? recipeService.recipe(id: id) else {
-                return .success(responseJSON: ["error": "Recipe not found: \(id)"])
+            let recipe: Recipe?
+            if let requestedId, let current = recipeEditorViewModel.recipe, current.id == requestedId {
+                recipe = current
+            } else if requestedId == nil {
+                recipe = recipeEditorViewModel.recipe
+            } else {
+                recipe = try? recipeService.recipe(id: requestedId ?? "")
+            }
+
+            guard let recipe else {
+                if let requestedId {
+                    return .success(responseJSON: ["error": "Recipe not found: \(requestedId)"])
+                }
+                return .success(responseJSON: ["error": "No recipe is currently open"])
             }
             var dict: [String: Any] = [
                 "id": recipe.id,
@@ -43,7 +54,8 @@ func registerRecipeListTools(
                 "ingredients": recipe.ingredients,
                 "directions": recipe.directions,
                 "servings": recipe.servings,
-                "tags": recipe.tags
+                "tags": recipe.tags,
+                "isNew": recipeEditorViewModel.isNewRecipe && recipeEditorViewModel.currentRecipeId == recipe.id
             ]
             if let photo = recipe.photoBase64 { dict["photoBase64"] = photo }
             return .success(responseJSON: ["recipe": dict])
@@ -53,12 +65,12 @@ func registerRecipeListTools(
 
     // MARK: recipe_load
 
-    await stream.registerTool("recipe_load", handler: toolCallLog.wrap("recipe_load") { [recipeService, selectedRecipeState] args in
+    await stream.registerTool("recipe_load", handler: toolCallLog.wrap("recipe_load") { [recipeService, selectedRecipeState, recipeEditorViewModel] args in
         guard let id = args["id"] as? String else {
             return .error(message: "Missing 'id'")
         }
         return await MainActor.run {
-            if (try? recipeService.recipe(id: id)) != nil {
+            if (try? recipeEditorViewModel.load(id: id, using: recipeService)) != nil {
                 selectedRecipeState.selectedRecipeId = id
                 return .success(responseJSON: ["id": id, "ok": true])
             }

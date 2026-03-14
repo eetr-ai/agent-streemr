@@ -2,11 +2,8 @@ import SwiftUI
 
 /// Displays the full details of a single recipe and allows editing.
 struct RecipeEditorView: View {
-
-    let recipeId: String
-
     @Environment(\.recipeService) private var recipeService
-    @State private var viewModel = RecipeEditorViewModel()
+    @Environment(RecipeEditorViewModel.self) private var viewModel
 
     var body: some View {
         Group {
@@ -66,11 +63,10 @@ struct RecipeEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { viewModel.save(using: recipeService) }
+                Button("Save") { _ = try? viewModel.save(using: recipeService) }
                     .disabled(!viewModel.canSave)
             }
         }
-        .task { viewModel.load(id: recipeId, using: recipeService) }
         .alert("Error", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { _ in viewModel.dismissError() }

@@ -11,79 +11,78 @@ func registerRecipeEditorTools(
     recipeService: RecipeService,
     photoStaging: PhotoStagingService,
     selectedRecipeState: SelectedRecipeState,
+    recipeEditorViewModel: RecipeEditorViewModel,
     toolCallLog: ToolCallLogViewModel
 ) async {
+    func currentRecipeResponse(_ recipe: Recipe, isNew: Bool) -> LocalToolHandlerResult {
+        .success(responseJSON: [
+            "id": recipe.id,
+            "name": recipe.name,
+            "ok": true,
+            "isNew": isNew
+        ])
+    }
 
-    // MARK: recipe_create
+    func register(_ toolName: String, handler: @escaping LocalToolHandler) async {
+        await stream.registerTool(toolName, handler: toolCallLog.wrap(toolName, handler))
+    }
 
-    await stream.registerTool("recipe_create", handler: toolCallLog.wrap("recipe_create") { [recipeService, selectedRecipeState] args in
-        let result: LocalToolHandlerResult = await MainActor.run {
-            do {
-                let recipe = try recipeService.create()
-                if let name = args["name"] as? String, !name.isEmpty {
-                    recipe.name = name
-                }
-                if let tags = args["tags"] as? [String] { recipe.tags = tags }
-                if let servings = args["servings"] {
-                    recipe.servings = parseServings(servings) ?? recipe.servings
-                }
-                try recipeService.save(recipe)
-                selectedRecipeState.selectedRecipeId = recipe.id
-                return .success(responseJSON: [
-                    "id": recipe.id,
-                    "name": recipe.name,
-                    "ok": true
-                ])
-            } catch {
-                return .error(message: error.localizedDescription)
-            }
+    // MARK: recipe_create / create_recipe
+
+    let createHandler: LocalToolHandler = { [selectedRecipeState, recipeEditorViewModel] args in
+        await MainActor.run {
+            let name = args["name"] as? String
+            let tags = args["tags"] as? [String] ?? []
+            let servings = parseServings(args["servings"] as Any)
+            let recipe = recipeEditorViewModel.startNewRecipe(name: name, tags: tags, servings: servings)
+            selectedRecipeState.selectedRecipeId = nil
+            return currentRecipeResponse(recipe, isNew: true)
         }
-        return result
-    })
+    }
+    await register("recipe_create", handler: createHandler)
+    await register("create_recipe", handler: createHandler)
 
     // MARK: recipe_set_title
 
-    await stream.registerTool("recipe_set_title", handler: toolCallLog.wrap("recipe_set_title") { [recipeService] args in
-        guard let id = args["id"] as? String,
-              let name = args["name"] as? String else {
-            return .error(message: "Missing 'id' or 'name'")
+    await register("recipe_set_title") { [recipeService, recipeEditorViewModel] args in
+        guard let name = args["name"] as? String else {
+            return .error(message: "Missing 'name'")
         }
+        let id = args["id"] as? String
         let result: LocalToolHandlerResult = await MainActor.run {
-            guard let recipe = try? recipeService.recipe(id: id) else {
-                return .success(responseJSON: ["ok": false, "error": "Not found"])
+            guard let recipe = try? recipeEditorViewModel.recipeForEditing(id: id, using: recipeService) else {
+                return .success(responseJSON: ["ok": false, "error": "Recipe not found"])
             }
             recipe.name = name
-            return .success(responseJSON: ["ok": true, "id": recipe.id, "name": recipe.name])
+            return currentRecipeResponse(recipe, isNew: recipeEditorViewModel.isNewRecipe)
         }
         return result
-    })
+    }
 
     // MARK: recipe_set_description
 
-    await stream.registerTool("recipe_set_description", handler: toolCallLog.wrap("recipe_set_description") { [recipeService] args in
-        guard let id = args["id"] as? String,
-              let description = args["description"] as? String else {
-            return .error(message: "Missing 'id' or 'description'")
+    await register("recipe_set_description") { [recipeService, recipeEditorViewModel] args in
+        guard let description = args["description"] as? String else {
+            return .error(message: "Missing 'description'")
         }
+        let id = args["id"] as? String
         let result: LocalToolHandlerResult = await MainActor.run {
-            guard let recipe = try? recipeService.recipe(id: id) else {
-                return .success(responseJSON: ["ok": false, "error": "Not found"])
+            guard let recipe = try? recipeEditorViewModel.recipeForEditing(id: id, using: recipeService) else {
+                return .success(responseJSON: ["ok": false, "error": "Recipe not found"])
             }
             recipe.recipeDescription = description
-            return .success(responseJSON: ["ok": true, "id": recipe.id])
+            return currentRecipeResponse(recipe, isNew: recipeEditorViewModel.isNewRecipe)
         }
         return result
-    })
+    }
 
     // MARK: recipe_set_ingredients
 
-    await stream.registerTool("recipe_set_ingredients", handler: toolCallLog.wrap("recipe_set_ingredients") { [recipeService] args in
-        guard let id = args["id"] as? String else {
-            return .error(message: "Missing 'id'")
-        }
+    await register("recipe_set_ingredients") { [recipeService, recipeEditorViewModel] args in
+        let id = args["id"] as? String
         let result: LocalToolHandlerResult = await MainActor.run {
-            guard let recipe = try? recipeService.recipe(id: id) else {
-                return .success(responseJSON: ["ok": false, "error": "Not found"])
+            guard let recipe = try? recipeEditorViewModel.recipeForEditing(id: id, using: recipeService) else {
+                return .success(responseJSON: ["ok": false, "error": "Recipe not found"])
             }
             let op = args["op"] as? String ?? "set"
             switch op {
@@ -117,20 +116,23 @@ func registerRecipeEditorTools(
             default:
                 break
             }
-            return .success(responseJSON: ["ok": true, "id": recipe.id, "count": recipe.ingredients.count])
+            return .success(responseJSON: [
+                "ok": true,
+                "id": recipe.id,
+                "count": recipe.ingredients.count,
+                "isNew": recipeEditorViewModel.isNewRecipe
+            ])
         }
         return result
-    })
+    }
 
     // MARK: recipe_set_directions
 
-    await stream.registerTool("recipe_set_directions", handler: toolCallLog.wrap("recipe_set_directions") { [recipeService] args in
-        guard let id = args["id"] as? String else {
-            return .error(message: "Missing 'id'")
-        }
+    await register("recipe_set_directions") { [recipeService, recipeEditorViewModel] args in
+        let id = args["id"] as? String
         let result: LocalToolHandlerResult = await MainActor.run {
-            guard let recipe = try? recipeService.recipe(id: id) else {
-                return .success(responseJSON: ["ok": false, "error": "Not found"])
+            guard let recipe = try? recipeEditorViewModel.recipeForEditing(id: id, using: recipeService) else {
+                return .success(responseJSON: ["ok": false, "error": "Recipe not found"])
             }
             let op = args["op"] as? String ?? "set"
             switch op {
@@ -167,56 +169,74 @@ func registerRecipeEditorTools(
             default:
                 break
             }
-            return .success(responseJSON: ["ok": true, "id": recipe.id, "steps": recipe.directions.count])
+            return .success(responseJSON: [
+                "ok": true,
+                "id": recipe.id,
+                "steps": recipe.directions.count,
+                "isNew": recipeEditorViewModel.isNewRecipe
+            ])
         }
         return result
-    })
+    }
 
-    // MARK: recipe_save
+    // MARK: recipe_save / save_recipe
 
-    // In SwiftData, mutations are persisted automatically. This tool acts as
-    // a validation checkpoint that also runs the service's trimming/validation.
-    await stream.registerTool("recipe_save", handler: toolCallLog.wrap("recipe_save") { [recipeService] args in
-        guard let id = args["id"] as? String else {
-            return .error(message: "Missing 'id'")
-        }
+    let saveHandler: LocalToolHandler = { [recipeService, selectedRecipeState, recipeEditorViewModel] args in
+        let id = args["id"] as? String
         let result: LocalToolHandlerResult = await MainActor.run {
-            guard let recipe = try? recipeService.recipe(id: id) else {
-                return .success(responseJSON: ["ok": false, "error": "Not found"])
-            }
             do {
-                try recipeService.save(recipe)
-                return .success(responseJSON: ["ok": true, "id": recipe.id, "name": recipe.name])
+                _ = try recipeEditorViewModel.recipeForEditing(id: id, using: recipeService)
+                let recipe = try recipeEditorViewModel.save(using: recipeService)
+                selectedRecipeState.selectedRecipeId = recipe.id
+                return .success(responseJSON: [
+                    "ok": true,
+                    "id": recipe.id,
+                    "name": recipe.name,
+                    "isNew": false
+                ])
             } catch {
                 return .success(responseJSON: ["ok": false, "error": error.localizedDescription])
             }
         }
         return result
-    })
+    }
+    await register("recipe_save", handler: saveHandler)
+    await register("save_recipe", handler: saveHandler)
 
     // MARK: recipe_delete
 
-    await stream.registerTool("recipe_delete", handler: toolCallLog.wrap("recipe_delete") { [recipeService] args in
-        guard let id = args["id"] as? String else {
-            return .error(message: "Missing 'id'")
-        }
+    await register("recipe_delete") { [recipeService, selectedRecipeState, recipeEditorViewModel] args in
+        let id = args["id"] as? String
         let result: LocalToolHandlerResult = await MainActor.run {
             do {
-                try recipeService.delete(id: id)
-                return .success(responseJSON: ["ok": true, "id": id])
+                if recipeEditorViewModel.isNewRecipe,
+                   let current = recipeEditorViewModel.recipe,
+                   id == nil || id == current.id {
+                    recipeEditorViewModel.close()
+                    selectedRecipeState.selectedRecipeId = nil
+                    return .success(responseJSON: ["ok": true, "id": current.id, "deletedDraft": true])
+                }
+
+                guard let recipe = try? recipeEditorViewModel.recipeForEditing(id: id, using: recipeService) else {
+                    return .success(responseJSON: ["ok": false, "error": "Recipe not found"])
+                }
+                try recipeService.delete(id: recipe.id)
+                if selectedRecipeState.selectedRecipeId == recipe.id {
+                    selectedRecipeState.selectedRecipeId = nil
+                }
+                recipeEditorViewModel.close()
+                return .success(responseJSON: ["ok": true, "id": recipe.id])
             } catch {
                 return .success(responseJSON: ["ok": false, "error": error.localizedDescription])
             }
         }
         return result
-    })
+    }
 
     // MARK: recipe_set_photo
 
-    await stream.registerTool("recipe_set_photo", handler: toolCallLog.wrap("recipe_set_photo") { [recipeService, photoStaging] args in
-        guard let id = args["id"] as? String else {
-            return .error(message: "Missing 'id'")
-        }
+    await register("recipe_set_photo") { [recipeService, photoStaging, recipeEditorViewModel] args in
+        let id = args["id"] as? String
         let result: LocalToolHandlerResult = await MainActor.run {
             guard let staged = photoStaging.consume() else {
                 return .success(responseJSON: [
@@ -224,14 +244,18 @@ func registerRecipeEditorTools(
                     "error": "No photo staged. The user must attach an image first."
                 ])
             }
-            guard let recipe = try? recipeService.recipe(id: id) else {
-                return .success(responseJSON: ["ok": false, "error": "Not found"])
+            guard let recipe = try? recipeEditorViewModel.recipeForEditing(id: id, using: recipeService) else {
+                return .success(responseJSON: ["ok": false, "error": "Recipe not found"])
             }
             recipe.photoBase64 = staged.data.base64EncodedString()
-            return .success(responseJSON: ["ok": true, "id": recipe.id])
+            return .success(responseJSON: [
+                "ok": true,
+                "id": recipe.id,
+                "isNew": recipeEditorViewModel.isNewRecipe
+            ])
         }
         return result
-    })
+    }
 }
 
 // MARK: - Helpers
