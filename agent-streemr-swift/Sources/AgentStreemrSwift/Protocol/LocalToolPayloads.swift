@@ -3,7 +3,7 @@ import Foundation
 // MARK: - local_tool payload
 
 /// Payload received from the server when it wants the client to execute a local tool.
-public struct LocalToolPayload: Sendable {
+public struct LocalToolPayload: @unchecked Sendable {
     public let requestId: String
     public let toolName: String
     public let argsJson: [String: Any]
@@ -51,7 +51,7 @@ extension LocalToolPayload {
 // MARK: - Handler result
 
 /// The result returned by a local tool handler closure.
-public enum LocalToolHandlerResult: Sendable {
+public enum LocalToolHandlerResult: @unchecked Sendable {
     /// Tool executed successfully; carry the result JSON to the server.
     case success(responseJSON: [String: Any])
     /// The user (or app logic) denied this request.

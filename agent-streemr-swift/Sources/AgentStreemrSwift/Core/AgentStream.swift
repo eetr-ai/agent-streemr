@@ -216,12 +216,22 @@ public final class AgentStream {
 
             let startPayload = StartAttachmentsPayload(correlationId: correlationId, count: attachments.count)
             socket.emit(SocketEvent.startAttachments, with: [startPayload.toSocketData()])
+            self.emitProtocolEvent(
+                SocketEvent.startAttachments,
+                direction: .outgoing,
+                rawData: [startPayload.toSocketData()]
+            )
             for (i, attachment) in attachments.enumerated() {
                 let attPayload = AttachmentUploadPayload(
                     correlationId: correlationId, seq: i,
-                    type: attachment.type, body: attachment.body, name: attachment.name
+                    type: attachment.type.rawValue, body: attachment.body, name: attachment.name
                 )
                 socket.emit(SocketEvent.attachment, with: [attPayload.toSocketData()])
+                self.emitProtocolEvent(
+                    SocketEvent.attachment,
+                    direction: .outgoing,
+                    rawData: [attPayload.toSocketData()]
+                )
             }
         }
         return correlationId
@@ -361,6 +371,7 @@ public final class AgentStream {
                 self?.status = .disconnected
                 self?.isStreaming = false
                 self?.isWorking = false
+                self?.socket?.disconnect()
                 self?.emitProtocolEvent(SocketEvent.inactiveClose, direction: .incoming, rawData: data)
                 self?.publishAll()
             }
@@ -453,6 +464,7 @@ public final class AgentStream {
     // MARK: - Event Handlers
 
     private func handleConnect() {
+        inactiveCloseReason = nil
         status = .connected
         // Immediately emit client_hello to initiate protocol version negotiation
         let hello = ClientHelloPayload(

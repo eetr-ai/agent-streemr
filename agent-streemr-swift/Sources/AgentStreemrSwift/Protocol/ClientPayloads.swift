@@ -48,16 +48,35 @@ struct MessagePayload {
 
 // MARK: - Attachment
 
+/// Protocol-defined attachment type. Values are sent as strings on the wire.
+public enum AttachmentType: String, Sendable, CaseIterable {
+    case image = "image"
+    case markdown = "markdown"
+
+    /// Maps a MIME type to the protocol attachment type, or `nil` if unknown.
+    /// Use `.image` as fallback for image picker results.
+    public init?(mimeType: String) {
+        let lower = mimeType.lowercased()
+        if lower.hasPrefix("image/") {
+            self = .image
+        } else if lower == "text/markdown" || lower.hasSuffix("markdown") {
+            self = .markdown
+        } else {
+            return nil
+        }
+    }
+}
+
 /// An attachment content object carried by the multi-step upload protocol.
 public struct Attachment: Sendable {
-    /// `"image"` for raster images or `"markdown"` for Markdown text files.
-    public let type: String
+    /// Protocol type: `image` for raster images, `markdown` for Markdown text files.
+    public let type: AttachmentType
     /// The file content encoded as a Base64 string.
     public let body: String
     /// Optional filename or human-readable label.
     public let name: String?
 
-    public init(type: String, body: String, name: String? = nil) {
+    public init(type: AttachmentType, body: String, name: String? = nil) {
         self.type = type
         self.body = body
         self.name = name
@@ -111,7 +130,7 @@ struct SetContextPayload {
 // MARK: - local_tool_response
 
 /// Discriminated-union response sent back to the server for a local tool invocation.
-public enum LocalToolResponsePayload: Sendable {
+public enum LocalToolResponsePayload: @unchecked Sendable {
     case success(requestId: String, toolName: String, responseJSON: [String: Any])
     case denied(requestId: String, toolName: String)
     case notSupported(requestId: String, toolName: String)
