@@ -4,19 +4,18 @@ import SwiftUI
 /// Helps users understand what actions the agent took on their device.
 struct ToolCallLogView: View {
 
-    // TODO: subscribe to a ToolCallLogStore (to be implemented).
-    @State private var entries: [ToolCallEntry] = []
+    @State private var viewModel = ToolCallLogViewModel()
 
     var body: some View {
         Group {
-            if entries.isEmpty {
+            if viewModel.entries.isEmpty {
                 ContentUnavailableView(
                     "No Tool Calls Yet",
                     systemImage: "wrench.and.screwdriver",
                     description: Text("Local tool calls will appear here as the agent uses them.")
                 )
             } else {
-                List(entries) { entry in
+                List(viewModel.entries) { entry in
                     ToolCallRow(entry: entry)
                 }
                 .listStyle(.insetGrouped)
@@ -25,49 +24,10 @@ struct ToolCallLogView: View {
         .navigationTitle("Tool Calls")
         .toolbar {
             ToolbarItem(placement: .destructiveAction) {
-                Button("Clear", role: .destructive) { entries.removeAll() }
-                    .disabled(entries.isEmpty)
+                Button("Clear", role: .destructive) { viewModel.clear() }
+                    .disabled(viewModel.entries.isEmpty)
             }
         }
-    }
-}
-
-// MARK: - Model
-
-enum ToolCallStatus {
-    case pending
-    case success
-    case failure(String)
-
-    var label: String {
-        switch self {
-        case .pending:  return "Pending"
-        case .success:  return "Success"
-        case .failure:  return "Failed"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .pending:  return .orange
-        case .success:  return .green
-        case .failure:  return .red
-        }
-    }
-}
-
-struct ToolCallEntry: Identifiable {
-    let id: String          // request_id
-    let toolName: String
-    let arguments: String   // JSON string
-    var status: ToolCallStatus
-    let startedAt: Date
-    var endedAt: Date?
-
-    var duration: String? {
-        guard let end = endedAt else { return nil }
-        let ms = Int(end.timeIntervalSince(startedAt) * 1000)
-        return "\(ms) ms"
     }
 }
 

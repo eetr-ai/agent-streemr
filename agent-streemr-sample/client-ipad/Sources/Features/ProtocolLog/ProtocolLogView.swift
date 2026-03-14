@@ -5,22 +5,18 @@ import AgentStreemrSwift
 /// Useful for debugging.
 struct ProtocolLogView: View {
 
-    @Environment(AgentStream.self) private var stream
-
-    // Protocol events are appended here as they arrive.
-    // TODO: subscribe to a ProtocolLogStore (to be implemented).
-    @State private var entries: [ProtocolLogEntry] = []
+    @State private var viewModel = ProtocolLogViewModel()
 
     var body: some View {
         Group {
-            if entries.isEmpty {
+            if viewModel.entries.isEmpty {
                 ContentUnavailableView(
                     "No Events Yet",
                     systemImage: "antenna.radiowaves.left.and.right",
                     description: Text("Protocol events will appear here once connected.")
                 )
             } else {
-                List(entries) { entry in
+                List(viewModel.entries) { entry in
                     ProtocolLogRow(entry: entry)
                 }
                 .listStyle(.plain)
@@ -30,23 +26,10 @@ struct ProtocolLogView: View {
         .navigationTitle("Protocol Log")
         .toolbar {
             ToolbarItem(placement: .destructiveAction) {
-                Button("Clear", role: .destructive) { entries.removeAll() }
-                    .disabled(entries.isEmpty)
+                Button("Clear", role: .destructive) { viewModel.clear() }
+                    .disabled(viewModel.entries.isEmpty)
             }
         }
-    }
-}
-
-// MARK: - Model
-
-struct ProtocolLogEntry: Identifiable {
-    let id = UUID()
-    let timestamp: Date
-    let eventName: String
-    let payload: String
-
-    var formattedTime: String {
-        timestamp.formatted(.dateTime.hour().minute().second())
     }
 }
 

@@ -4,19 +4,19 @@ import SwiftUI
 /// Tapping a row navigates to `RecipeEditorView` for that recipe.
 struct RecipeListView: View {
 
-    @State private var recipes: [Recipe] = []
-    @State private var errorMessage: String? = nil
+    @Environment(\.recipeService) private var recipeService
+    @State private var viewModel = RecipeListViewModel()
 
     var body: some View {
         Group {
-            if recipes.isEmpty {
+            if viewModel.recipes.isEmpty {
                 ContentUnavailableView(
                     "No Recipes Yet",
                     systemImage: "fork.knife",
                     description: Text("Ask the agent to create one for you.")
                 )
             } else {
-                List(recipes) { recipe in
+                List(viewModel.recipes) { recipe in
                     NavigationLink(value: recipe.id) {
                         RecipeRowView(recipe: recipe)
                     }
@@ -25,19 +25,14 @@ struct RecipeListView: View {
             }
         }
         .navigationTitle("Recipes")
-        .task { reload() }
-        .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { _ in errorMessage = nil })) {
+        .task { viewModel.load(using: recipeService) }
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { _ in viewModel.dismissError() }
+        )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(errorMessage ?? "")
-        }
-    }
-
-    private func reload() {
-        do {
-            recipes = try RecipeService.shared.allRecipes()
-        } catch {
-            errorMessage = error.localizedDescription
+            Text(viewModel.errorMessage ?? "")
         }
     }
 }

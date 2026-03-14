@@ -5,12 +5,12 @@ struct RecipeEditorView: View {
 
     let recipeId: String
 
-    @State private var recipe: Recipe? = nil
-    @State private var errorMessage: String? = nil
+    @Environment(\.recipeService) private var recipeService
+    @State private var viewModel = RecipeEditorViewModel()
 
     var body: some View {
         Group {
-            if let recipe {
+            if let recipe = viewModel.recipe {
                 Form {
                     Section("Title") {
                         TextField("Name", text: Binding(
@@ -62,36 +62,22 @@ struct RecipeEditorView: View {
                 ProgressView("Loading…")
             }
         }
-        .navigationTitle(recipe?.name.isEmpty == false ? recipe!.name : "Recipe")
+        .navigationTitle(viewModel.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { saveRecipe() }
-                    .disabled(recipe == nil)
+                Button("Save") { viewModel.save(using: recipeService) }
+                    .disabled(!viewModel.canSave)
             }
         }
-        .task { loadRecipe() }
-        .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { _ in errorMessage = nil })) {
+        .task { viewModel.load(id: recipeId, using: recipeService) }
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { _ in viewModel.dismissError() }
+        )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(errorMessage ?? "")
-        }
-    }
-
-    private func loadRecipe() {
-        do {
-            recipe = try RecipeService.shared.recipe(id: recipeId)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func saveRecipe() {
-        guard let recipe else { return }
-        do {
-            try RecipeService.shared.save(recipe)
-        } catch {
-            errorMessage = error.localizedDescription
+            Text(viewModel.errorMessage ?? "")
         }
     }
 }

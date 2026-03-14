@@ -5,8 +5,7 @@ import AgentStreemrSwift
 struct ChatView: View {
 
     @Environment(AgentStream.self) private var stream
-
-    @State private var inputText: String = ""
+    @State private var viewModel = ChatViewModel()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,37 +31,25 @@ struct ChatView: View {
 
             // Input bar
             HStack(spacing: 12) {
-                TextField("Message…", text: $inputText, axis: .vertical)
+                TextField("Message…", text: $viewModel.inputText, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(1...6)
 
                 Button {
-                    sendMessage()
+                    viewModel.send(using: stream)
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
                 }
-                .disabled(!canSend)
+                .disabled(!viewModel.canSend(stream: stream))
             }
             .padding(.horizontal)
             .padding(.vertical, 10)
         }
         .navigationTitle("Chat")
+        .task { viewModel.connect(to: stream) }
         .overlay(alignment: .top) {
             StatusBanner(status: stream.status)
-        }
-    }
-
-    private var canSend: Bool {
-        stream.status.isConnected && !stream.isStreaming && !inputText.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private func sendMessage() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        inputText = ""
-        Task {
-            try? await stream.sendMessage(text)
         }
     }
 }
