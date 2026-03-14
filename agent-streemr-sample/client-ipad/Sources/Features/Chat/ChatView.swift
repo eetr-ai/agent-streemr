@@ -6,6 +6,7 @@ struct ChatView: View {
 
     @Environment(AgentStream.self) private var stream
     @Environment(ToolApprovalService.self) private var toolApprovalService
+    @Environment(\.photoStagingService) private var photoStagingService
     @State private var viewModel = ChatViewModel()
 
     var body: some View {
@@ -70,6 +71,10 @@ struct ChatView: View {
                                         .background(Color(.secondarySystemBackground))
                                     }
                 Button {
+                    // Stage the attachment so recipe_set_photo can consume it.
+                    if let att = viewModel.pendingAttachment {
+                        photoStagingService.stage(data: att.data, mimeType: att.mimeType)
+                    }
                     viewModel.send(using: stream)
                 } label: {
                                         PhotosPicker(selection: Binding(
