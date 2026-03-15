@@ -105,8 +105,9 @@ export type UseAgentStreamResult = {
    * Open the socket connection for the given thread.
    * Maps `threadId` to `auth.thread_id` in the handshake.
    * Safe to call multiple times — subsequent calls reconnect with the new threadId.
+   * Optional `agentId` overrides the option from the hook for this connection only.
    */
-  connect: (threadId: string) => void;
+  connect: (threadId: string, agentId?: string) => void;
   /** Disconnect the socket and reset all state. */
   disconnect: () => void;
   /**

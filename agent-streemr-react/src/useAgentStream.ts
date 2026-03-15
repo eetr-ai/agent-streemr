@@ -78,6 +78,9 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
     Map<string, { pending: Set<number>; resolve: () => void; reject: (err: Error) => void }>
   >(new Map());
 
+  // Effective agentId for the current connection (set at connect() so the connect listener can use it).
+  const connectionAgentIdRef = useRef<string | undefined>(undefined);
+
   // ---------------------------------------------------------------------------
   // Attach all server-event listeners to a freshly created socket.
   // ---------------------------------------------------------------------------
@@ -86,7 +89,8 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
       setStatus("connected");
       setError(null);
       const hello: Record<string, unknown> = { version: CLIENT_PROTOCOL_VERSION };
-      if (agentId !== undefined) hello.agent_id = agentId;
+      const effectiveAgentId = connectionAgentIdRef.current;
+      if (effectiveAgentId !== undefined) hello.agent_id = effectiveAgentId;
       if (inactivityTimeoutMs !== undefined && inactivityTimeoutMs > 0)
         hello.inactivity_timeout_ms = inactivityTimeoutMs;
       socket.emit("client_hello", hello as Parameters<ClientToServerEvents["client_hello"]>[0]);
@@ -200,19 +204,22 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
   // ---------------------------------------------------------------------------
 
   const connect = useCallback(
-    (threadId: string) => {
+    (threadId: string, overrideAgentId?: string) => {
       // Tear down any existing socket first (allows reconnect with new threadId).
       detachSocket();
       setStatus("connecting");
       setError(null);
       setInactiveCloseReason(null);
 
+      const effectiveAgentId = overrideAgentId ?? agentId;
+      connectionAgentIdRef.current = effectiveAgentId;
+
       const socket: AgentSocket = io(url, {
         ...socketOptions,
         auth: {
           token,
           thread_id: threadId,
-          ...(agentId !== undefined && { agent_id: agentId }),
+          ...(effectiveAgentId !== undefined && { agent_id: effectiveAgentId }),
         },
       });
 

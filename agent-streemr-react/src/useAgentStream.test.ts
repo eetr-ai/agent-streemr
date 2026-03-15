@@ -87,6 +87,21 @@ describe("useAgentStream", () => {
     );
   });
 
+  it("connect(threadId, agentId) overrides agentId for this connection", () => {
+    const { result } = renderStream();
+    act(() => { result.current.connect("thread-1", "override-agent"); });
+    expect(vi.mocked(io)).toHaveBeenCalledWith(
+      "http://localhost:8080",
+      expect.objectContaining({
+        auth: {
+          token: "test-token",
+          thread_id: "thread-1",
+          agent_id: "override-agent",
+        },
+      })
+    );
+  });
+
   it("connect() exposes the socket reference after status update", () => {
     const { result } = renderStream();
     act(() => { result.current.connect("thread-1"); });

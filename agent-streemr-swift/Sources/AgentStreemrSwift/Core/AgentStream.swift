@@ -119,16 +119,18 @@ public final class AgentStream {
     /// Maps to `auth.thread_id` in the Socket.IO handshake, which the server
     /// uses as the room / thread identifier. Safe to call multiple times — subsequent
     /// calls disconnect any existing socket and reconnect with the new `threadId`.
-    public func connect(threadId: String) {
+    /// Optional `agentId` overrides the value from configuration for this connection only.
+    public func connect(threadId: String, agentId: String? = nil) {
         detachSocket()
         status = .connecting
         _statusSubject.send(status)
 
+        let effectiveAgentId = agentId ?? configuration.agentId
         let newSocket = LiveAgentSocket(
             url: configuration.url,
             token: configuration.token,
             threadId: threadId,
-            agentId: configuration.agentId,
+            agentId: effectiveAgentId,
             extraConfig: configuration.socketConfiguration
         )
         socket = newSocket
