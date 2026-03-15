@@ -79,7 +79,7 @@ Core hook. Manages the full Socket.io connection lifecycle and returns the conve
 
 | Field | Type | Description |
 |---|---|---|
-| `connect` | `(threadId: string) => void` | Open the socket for the given thread. Safe to call multiple times — reconnects with the new `threadId`. Maps `threadId` to `auth.installation_id` in the handshake. |
+| `connect` | `(threadId: string) => void` | Open the socket for the given thread. Safe to call multiple times — reconnects with the new `threadId`. Maps `threadId` to `auth.thread_id` in the handshake. |
 | `disconnect` | `() => void` | Disconnect the socket and reset all state. |
 | `sendMessage` | `(text: string, topicName?: string) => void` | Optimistically push a user message and emit `message` to the server. Clears `internalThought`. |
 | `clearContext` | `() => void` | Emit `clear_context`. On `context_cleared` confirmation, local messages are wiped. |

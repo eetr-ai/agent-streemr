@@ -60,7 +60,7 @@ function Chat({ jwt, deviceId }: { jwt: string; deviceId: string }) {
 
 The hook does **not** open a socket on mount. Call `connect(threadId)` when
 you have the user's identity — typically after an auth state change. This maps
-`threadId` to `auth.installation_id` in the Socket.io handshake, which the
+`threadId` to `auth.thread_id` in the Socket.io handshake, which the
 server uses as both the conversation checkpointing key and the socket room.
 
 ```tsx
@@ -478,7 +478,7 @@ const { inactiveCloseReason, connect, status } = useAgentStream({ url, token });
 
 | Field | Type | Description |
 |---|---|---|
-| `connect` | `(threadId: string) => void` | Open the socket; maps `threadId` → `auth.installation_id` |
+| `connect` | `(threadId: string) => void` | Open the socket; maps `threadId` → `auth.thread_id` |
 | `disconnect` | `() => void` | Disconnect and reset all state |
 | `sendMessage` | `(text: string, context?: Record<string, any>, attachments?: Attachment[]) => void` | Optimistic send; performs multi-step upload handshake when attachments are provided |
 | `clearContext` | `() => void` | Emit `clear_context`; wipes local messages on confirmation |

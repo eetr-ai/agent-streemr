@@ -24,7 +24,8 @@
  *   authenticate: async (socket) => {
  *     const token = socket.handshake.auth?.token;
  *     if (!await verify(token)) return null;
- *     const threadId = socket.handshake.auth?.installation_id;
+ *     const threadId = socket.handshake.auth?.thread_id ?? socket.handshake.auth?.installation_id;
+ *     if (!threadId || typeof threadId !== "string") return null;
  *     return { threadId };
  *   },
  *   createContext: (_threadId) => ({ userId: "unknown" }),
@@ -425,7 +426,9 @@ export function createAgentSocketListener<TContext>(
     // -----------------------------------------------------------------------
     // Per-socket mutable state
     // -----------------------------------------------------------------------
-    let socketAgentId: string | undefined;
+    const authAgentId = socket.handshake.auth?.agent_id;
+    let socketAgentId: string | undefined =
+      typeof authAgentId === "string" ? authAgentId : undefined;
     let effectiveTimeoutMs = 0;
     let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
     type StagingState = { correlationId: string; count: number; staged: Map<number, Attachment> };

@@ -65,7 +65,24 @@ describe("useAgentStream", () => {
     expect(vi.mocked(io)).toHaveBeenCalledWith(
       "http://localhost:8080",
       expect.objectContaining({
-        auth: { token: "test-token", installation_id: "thread-1" },
+        auth: { token: "test-token", thread_id: "thread-1" },
+      })
+    );
+  });
+
+  it("connect() includes agent_id in auth when agentId option is set", () => {
+    const { result } = renderHook(() =>
+      useAgentStream({ ...DEFAULT_OPTIONS, agentId: "my-agent" })
+    );
+    act(() => { result.current.connect("thread-1"); });
+    expect(vi.mocked(io)).toHaveBeenCalledWith(
+      "http://localhost:8080",
+      expect.objectContaining({
+        auth: {
+          token: "test-token",
+          thread_id: "thread-1",
+          agent_id: "my-agent",
+        },
       })
     );
   });
@@ -299,14 +316,14 @@ describe("useAgentStream", () => {
     expect(result.current.socket).toBe(secondSocket);
   });
 
-  it("reconnect passes the new threadId to auth.installation_id", () => {
+  it("reconnect passes the new threadId to auth.thread_id", () => {
     const { result } = renderStream();
     act(() => { result.current.connect("thread-1"); });
     act(() => { result.current.connect("thread-2"); });
 
     const calls = vi.mocked(io).mock.calls;
     expect(calls[calls.length - 1][1]).toMatchObject({
-      auth: { installation_id: "thread-2" },
+      auth: { thread_id: "thread-2" },
     });
   });
 });

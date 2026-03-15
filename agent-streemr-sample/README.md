@@ -74,7 +74,7 @@ agent-streemr-sample/
 **Flow:**
 
 1. **Client** connects to the agent over WebSockets (Socket.io), with a stable `threadId` (e.g. from `localStorage`).
-2. **Agent** authenticates the connection (in this sample, by `installation_id` only; no JWT), then runs a LangGraph agent with a memory checkpointer keyed by `threadId`.
+2. **Agent** authenticates the connection (in this sample, by `thread_id` only; no JWT), then runs a LangGraph agent with a memory checkpointer keyed by `threadId`.
 3. User sends a **message** → agent may call **server-side tools** (e.g. web search) and **local tools** (recipe APIs). Local tool calls are sent to the client as `local_tool` events; the client runs them (e.g. against IndexedDB), then replies with `local_tool_response`.
 4. **Streaming**: the agent streams `internal_token` (thinking) and `agent_response` chunks to the client; the UI shows a thinking panel and incremental assistant messages.
 
@@ -275,7 +275,7 @@ Use these to see how the sample is built and to copy patterns.
 
 ### Server: Socket listener and agent runner
 
-- **[Bootstrap: Express + Socket.io + createAgentSocketListener](agent/src/bootstrap/server.ts)** — CORS, health check, `authenticate` (by `installation_id`), `createContext`, `getAgentRunner`, `localToolRegistry`.
+- **[Bootstrap: Express + Socket.io + createAgentSocketListener](agent/src/bootstrap/server.ts)** — CORS, health check, `authenticate` (by `thread_id`), `createContext`, `getAgentRunner`, `localToolRegistry`.
 - **[Agent stream and tool wiring](agent/src/agent/stream.ts)** — Model, checkpointer, web search tool, all recipe local tools, `streamAgentResponse` (async generator yielding `internal_token` / `agent_response`), `buildLangChainConfig(options)`.
 - **[Local tool definitions (server)](agent/src/agent/tools/)** — e.g. [recipeList.ts](agent/src/agent/tools/recipeList.ts) (async), [recipeCreate.ts](agent/src/agent/tools/recipeCreate.ts) (sync). Each uses `createLocalTool` from `@eetr/agent-streemr` with `tool_name`, `description`, `schema` (zod), `buildRequest`, `mode`.
 

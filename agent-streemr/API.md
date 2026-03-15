@@ -52,7 +52,7 @@ createAgentSocketListener<Ctx>({
   authenticate: async (socket) => {
     const token = socket.handshake.auth?.token as string | undefined;
     if (!token || !await verifyJwt(token)) return null;
-    const threadId = socket.handshake.auth?.installation_id as string;
+    const threadId = socket.handshake.auth?.thread_id as string;
     return { threadId, userId: getUserId(token) };
   },
   createContext: (threadId) => ({ userId: "unknown" }),

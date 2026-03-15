@@ -56,13 +56,14 @@ export function createApp() {
   createAgentSocketListener<UserContext>({
     io,
 
-    // No auth — just require a non-empty installation_id in the handshake.
+    // No auth — just require a non-empty thread_id (or legacy installation_id) in the handshake.
     authenticate: (socket) => {
-      const installationId = socket.handshake.auth?.installation_id;
-      if (!installationId || typeof installationId !== "string") {
+      const threadId =
+        socket.handshake.auth?.thread_id ?? socket.handshake.auth?.installation_id;
+      if (!threadId || typeof threadId !== "string") {
         return null; // rejects the connection
       }
-      return { threadId: installationId };
+      return { threadId };
     },
 
     // Per-thread context — tracks selection state, etc.

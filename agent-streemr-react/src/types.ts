@@ -103,7 +103,7 @@ export type UseAgentStreamOptions = {
 export type UseAgentStreamResult = {
   /**
    * Open the socket connection for the given thread.
-   * Maps `threadId` to `auth.installation_id` in the handshake.
+   * Maps `threadId` to `auth.thread_id` in the handshake.
    * Safe to call multiple times — subsequent calls reconnect with the new threadId.
    */
   connect: (threadId: string) => void;

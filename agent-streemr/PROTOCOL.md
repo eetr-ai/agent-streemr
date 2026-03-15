@@ -54,7 +54,7 @@ Attachments are uploaded via a correlated multi-step sequence rather than as a s
 ```
 Client                          Server
   |                               |
-  |------ TCP / WS handshake ---->|  (Socket.io auth: { token, installation_id })
+  |------ TCP / WS handshake ---->|  (Socket.io auth: { token, thread_id, agent_id? })
   |                               |  authenticate() → { threadId, ... }
   |                               |  socket.join(threadId)
   |                               |
@@ -83,7 +83,7 @@ Client                          Server
 
 > **Note on attachment ordering:** The client may fire all N `attachment` events without waiting for acks. The diagram above shows interleaved acks for clarity, but in practice the client sends all attachments immediately and tracks acks asynchronously.
 
-Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()` returns `null` the socket is rejected before any events are processed.
+Authentication is handled in a Socket.io `io.use` middleware. If `authenticate()` returns `null` the socket is rejected before any events are processed. The application typically reads `threadId` from `socket.handshake.auth.thread_id`. For backwards compatibility, servers may treat `socket.handshake.auth.installation_id` as the thread identifier when `thread_id` is absent.
 
 ---
 

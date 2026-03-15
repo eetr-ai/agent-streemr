@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Breaking
+
+- **Socket.IO handshake auth:** The thread identifier is now sent as `thread_id` instead of `installation_id`. Update server `authenticate` to read `socket.handshake.auth?.thread_id`. React and Swift clients now send `thread_id` in auth/connectParams.
+
+---
+
 ## [0.1.4] – 2026-03-14
 
 ### @eetr/agent-streemr

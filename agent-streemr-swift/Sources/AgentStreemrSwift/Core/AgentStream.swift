@@ -116,7 +116,7 @@ public final class AgentStream {
 
     /// Open the socket connection scoped to `threadId`.
     ///
-    /// Maps to `auth.installation_id` in the Socket.IO handshake, which the server
+    /// Maps to `auth.thread_id` in the Socket.IO handshake, which the server
     /// uses as the room / thread identifier. Safe to call multiple times — subsequent
     /// calls disconnect any existing socket and reconnect with the new `threadId`.
     public func connect(threadId: String) {
@@ -128,6 +128,7 @@ public final class AgentStream {
             url: configuration.url,
             token: configuration.token,
             threadId: threadId,
+            agentId: configuration.agentId,
             extraConfig: configuration.socketConfiguration
         )
         socket = newSocket

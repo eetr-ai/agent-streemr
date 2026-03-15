@@ -211,14 +211,15 @@ export function useAgentStream(options: UseAgentStreamOptions): UseAgentStreamRe
         ...socketOptions,
         auth: {
           token,
-          installation_id: threadId,
+          thread_id: threadId,
+          ...(agentId !== undefined && { agent_id: agentId }),
         },
       });
 
       socketRef.current = socket;
       attachListeners(socket);
     },
-    [url, token, socketOptions, attachListeners, detachSocket]
+    [url, token, socketOptions, agentId, attachListeners, detachSocket]
   );
 
   const disconnect = useCallback(() => {

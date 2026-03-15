@@ -280,7 +280,7 @@ createAgentSocketListener({
   authenticate: async (socket) => {
     const token = socket.handshake.auth?.token as string | undefined;
     if (!token || !(await verify(token))) return null; // null rejects the connection
-    const threadId = socket.handshake.auth?.installation_id as string;
+    const threadId = socket.handshake.auth?.thread_id as string;
     return { threadId };
   },
   createContext: (_threadId) => ({ userId: "unknown" }),

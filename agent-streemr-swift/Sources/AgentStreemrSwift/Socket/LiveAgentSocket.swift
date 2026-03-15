@@ -6,26 +6,36 @@ public final class LiveAgentSocket: AgentSocketProtocol, @unchecked Sendable {
     private let manager: SocketManager
     private let socket: SocketIOClient
     private let token: String
-private let threadId: String
+    private let threadId: String
+    private let agentId: String?
 
     /// - Parameters:
     ///   - url: Base URL of the agent-streemr server (e.g. `https://api.example.com`).
     ///   - token: Bearer JWT token passed in the Socket.IO handshake `auth` object.
-    ///   - threadId: Conversation thread identifier, sent as `installation_id` in the handshake.
+    ///   - threadId: Conversation thread identifier, sent as `thread_id` in the handshake.
+    ///   - agentId: Optional agent identifier, sent as `agent_id` in the handshake.
     ///   - extraConfig: Additional Socket.IO client configuration options.
     public init(
         url: URL,
         token: String,
         threadId: String,
+        agentId: String? = nil,
         extraConfig: SocketIOClientConfiguration = []
     ) {
+        self.token = token
+        self.threadId = threadId
+        self.agentId = agentId
         // The token is sent both ways for maximum server compatibility:
         //   1. HTTP header: Authorization: Bearer <token>  (socket.handshake.headers["authorization"])
         //   2. Query/auth param: token=<token>             (socket.handshake.auth.token / handshake.query.token)
-        // The thread identifier is also included in connectParams.
+        // The thread identifier and optional agent_id are also included in connectParams.
+        var connectParams: [String: String] = ["token": token, "thread_id": threadId]
+        if let agentId {
+            connectParams["agent_id"] = agentId
+        }
         var config: SocketIOClientConfiguration = [
             .extraHeaders(["Authorization": "Bearer \(token)"]),
-            .connectParams(["token": token, "installation_id": threadId]),
+            .connectParams(connectParams),
             .log(false),
             .reconnects(true),
             .reconnectAttempts(-1),
@@ -35,8 +45,6 @@ private let threadId: String
         }
         manager = SocketManager(socketURL: url, config: config)
         socket = manager.defaultSocket
-        self.token = token
-        self.threadId = threadId
     }
 
     public var isConnected: Bool {
@@ -64,10 +72,14 @@ private let threadId: String
     }
 
     public func connect() {
-        socket.connect(withPayload: [
-            "installation_id": threadId,
+        var payload: [String: String] = [
+            "thread_id": threadId,
             "token": token,
-        ])
+        ]
+        if let agentId {
+            payload["agent_id"] = agentId
+        }
+        socket.connect(withPayload: payload)
     }
 
     public func disconnect() {
