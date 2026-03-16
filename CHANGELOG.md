@@ -11,9 +11,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.1.5] – 2026-03-14
+
 ### Breaking
 
-- **Socket.IO handshake auth:** The thread identifier is now sent as `thread_id` instead of `installation_id`. Update server `authenticate` to read `socket.handshake.auth?.thread_id`. React and Swift clients now send `thread_id` in auth/connectParams.
+- **Socket.IO handshake auth:** The thread identifier is now sent as `thread_id` instead of `installation_id`. Update server `authenticate` to read `socket.handshake.auth?.thread_id`. React and Swift clients now send `thread_id` in auth/connectParams. Servers may accept `installation_id` when `thread_id` is absent for backwards compatibility.
+
+### @eetr/agent-streemr
+
+#### Added
+- Server reads `agent_id` from handshake (`socket.handshake.auth?.agent_id`) at connection time for routing before `client_hello`.
+- PROTOCOL.md documents `thread_id` and optional `agent_id` in the Socket.IO auth handshake.
+- Backwards compatibility: servers may accept `installation_id` when `thread_id` is absent; listener JSDoc example and sample app demonstrate the fallback.
+
+### @eetr/agent-streemr-react
+
+#### Added
+- `agent_id` is included in the Socket.IO auth object when the `agentId` option or override is set.
+- `connect(threadId, agentId?)` — optional second argument overrides the hook's `agentId` for that connection only.
+
+### AgentStreemrSwift
+
+#### Added
+- `agent_id` is included in `connectParams` and `connect(withPayload:)` when `agentId` is set in configuration or passed to `connect`.
+- `connect(threadId:agentId:)` — optional `agentId` parameter overrides the configuration's `agentId` for that connection only.
 
 ---
 
