@@ -1,5 +1,7 @@
 # @eetr/agent-streemr
 
+> Tip: Start with the installation and usage sections below to add agent-streemr to your project.
+
 **Reusable [Socket.io](https://socket.io) + LangChain agent plumbing.**
 
 `@eetr/agent-streemr` extracts the communication protocol, socket listener, local-tool registry, and stream adapter from a production LangChain/LangGraph agent into a standalone, dependency-tiered library — so you can build agents that use the same protocol with any tools or LLM, without rewriting the plumbing.
